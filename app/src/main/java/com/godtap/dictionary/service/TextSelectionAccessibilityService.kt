@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -82,21 +83,91 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         // Don't process sensitive contexts
         if (!shouldProcessText(event)) return
         
-        val selectedText = extractSelectedText(event)
+        // Get the FULL text from the node (not just selected portion)
+        // This is critical because fromIndex/toIndex refer to positions in the full text
+        val fullText = extractFullText(event)
         
-        if (selectedText != null && selectedText.isNotBlank()) {
-            Log.d(TAG, "Text selected: $selectedText")
-            
+        if (fullText != null && fullText.isNotBlank()) {
             // Check if it contains Japanese
-            if (JapaneseTextDetector.containsJapanese(selectedText)) {
-                Log.d(TAG, "Japanese text detected: $selectedText")
-                processJapaneseText(selectedText, event)
+            if (JapaneseTextDetector.containsJapanese(fullText)) {
+                Log.d(TAG, "Japanese text detected (length ${fullText.length}): ${fullText.take(50)}...")
+                
+                // Find the tap position using fromIndex/toIndex on the FULL text
+                val tapPosition = findTapPosition(event, fullText)
+                
+                if (tapPosition >= 0) {
+                    Log.d(TAG, "✓ Tap detected at position $tapPosition: '${fullText.getOrNull(tapPosition)}'")
+                    processJapaneseTextFromPosition(fullText, tapPosition)
+                } else {
+                    Log.d(TAG, "⊘ Could not determine tap position, scanning from start")
+                    processJapaneseTextFromPosition(fullText, 0)
+                }
             }
         } else {
             // Don't auto-hide the popup when selection is cleared
-            // The popup should only be dismissed by user action or timeout
             Log.d(TAG, "Text selection cleared, but keeping popup visible")
         }
+    }
+    
+    /**
+     * Find the tap position from the event's fromIndex/toIndex
+     * These indices refer to positions in the full text
+     */
+    private fun findTapPosition(event: AccessibilityEvent, fullText: String): Int {
+        try {
+            val fromIndex = event.fromIndex
+            val toIndex = event.toIndex
+            
+            Log.d(TAG, "Selection indices: from=$fromIndex, to=$toIndex, textLength=${fullText.length}")
+            
+            // Case 1: Valid range selection (e.g., user selected multiple characters)
+            if (fromIndex >= 0 && toIndex > fromIndex && toIndex <= fullText.length) {
+                Log.d(TAG, "Range selection [$fromIndex-$toIndex]: '${fullText.substring(fromIndex, toIndex)}'")
+                return fromIndex
+            }
+            
+            // Case 2: Cursor position (fromIndex == toIndex)
+            // This happens when user taps and Chrome sets cursor at that position
+            if (fromIndex >= 0 && fromIndex == toIndex && fromIndex < fullText.length) {
+                Log.d(TAG, "Cursor at position $fromIndex: '${fullText[fromIndex]}'")
+                return fromIndex
+            }
+            
+            // Case 3: fromIndex valid but toIndex is 0 or invalid
+            if (fromIndex >= 0 && fromIndex < fullText.length) {
+                Log.d(TAG, "Using fromIndex $fromIndex: '${fullText[fromIndex]}'")
+                return fromIndex
+            }
+            
+            Log.d(TAG, "No valid indices found")
+            return -1
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error determining tap position", e)
+            return -1
+        }
+    }
+    
+    /**
+     * Extract the FULL text from the event/node (not just the selected substring)
+     * This is critical because fromIndex/toIndex refer to the full text
+     */
+    private fun extractFullText(event: AccessibilityEvent): String? {
+        // Get full text from event.text (not the selected portion)
+        val text = event.text.firstOrNull()?.toString() ?: event.contentDescription?.toString()
+        
+        if (text != null && text.isNotBlank()) {
+            return text
+        }
+        
+        // Try to get text from source node
+        event.source?.let { node ->
+            val nodeText = extractTextFromNode(node)
+            node.recycle()
+            return nodeText
+        }
+        
+        return null
     }
     
     private fun handleViewClicked(event: AccessibilityEvent) {
@@ -114,34 +185,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Long click detected")
     }
     
-    private fun extractSelectedText(event: AccessibilityEvent): String? {
-        // Try to get text from event
-        val text = event.text.firstOrNull()?.toString() ?: event.contentDescription?.toString()
-        
-        if (text != null) {
-            val start = event.fromIndex
-            val end = event.toIndex
-            
-            // If we have valid selection indices
-            if (start >= 0 && end > start && end <= text.length) {
-                return text.substring(start, end)
-            }
-            
-            // If no valid indices, return the whole text if it's short
-            if (text.length <= 50) {
-                return text
-            }
-        }
-        
-        // Try to get text from source node
-        event.source?.let { node ->
-            val nodeText = extractTextFromNode(node)
-            node.recycle()
-            return nodeText
-        }
-        
-        return null
-    }
+
     
     private fun extractTextFromNode(node: AccessibilityNodeInfo): String? {
         // Try text field
@@ -192,37 +236,46 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         return true
     }
     
-    private fun processJapaneseText(text: String, event: AccessibilityEvent) {
+    /**
+     * Process Japanese text starting from a specific character position
+     * This is critical: scan from WHERE the user tapped, not from position 0!
+     */
+    private fun processJapaneseTextFromPosition(text: String, startPosition: Int) {
         serviceScope.launch {
             try {
                 // Debounce: ignore rapid repeated selections within 500ms
                 val currentTime = System.currentTimeMillis()
                 if (text == lastProcessedText && (currentTime - lastProcessedTime) < 500) {
-                    Log.d(TAG, "Ignoring duplicate selection: $text")
+                    Log.d(TAG, "⊘ Ignoring duplicate selection: $text")
                     return@launch
                 }
                 lastProcessedText = text
                 lastProcessedTime = currentTime
                 
-                Log.d(TAG, "Processing Japanese text: $text")
+                // Get the substring starting from the tapped position
+                val safeStartPos = startPosition.coerceIn(0, text.length)
+                val textFromTap = text.substring(safeStartPos)
                 
-                // Use Yomitan-style progressive substring matching (fastest approach)
-                // Tries longest substring first, then progressively shorter
-                val lookupResult = dictionaryLookup.lookup(text)
+                Log.d(TAG, "Processing from position $safeStartPos: '$textFromTap' (full text: '$text')")
+                
+                // Use Yomitan-style progressive substring matching
+                // Scans from the tap position forward (not from position 0!)
+                val lookupResult = dictionaryLookup.lookup(textFromTap)
                 
                 if (lookupResult != null) {
                     val entry = lookupResult.entry
-                    Log.d(TAG, "Found match: '${lookupResult.matchedText}' (length: ${lookupResult.matchLength}) from: '$text'")
+                    Log.d(TAG, "✓ Found match: '${lookupResult.matchedText}' (length: ${lookupResult.matchLength}) at position $safeStartPos")
+                    
                     // Get primary kanji and reading
                     val kanji = entry.getPrimaryKanji()
-                    val reading = entry.getPrimaryReading()
+                    val reading = entry.primaryReading
                     val rawGlosses = entry.getAllGlosses()
                     val partsOfSpeech = entry.getPartsOfSpeech()
                     
                     // Parse Yomichan structured content (JSON format)
                     val glosses = rawGlosses.map { parseYomichanGloss(it) }
                     
-                    Log.d(TAG, "Found entry: ${kanji ?: reading} -> ${glosses.joinToString(", ")}")
+                    Log.d(TAG, "Dictionary entry: ${kanji ?: reading} -> ${glosses.joinToString(", ")}")
                     
                     // Format the word display
                     val wordDisplay = if (kanji != null) {
@@ -241,8 +294,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     
                     overlayManager.showPopup(wordDisplay, translation)
                 } else {
-                    Log.d(TAG, "No dictionary entry found for: $text")
-                    overlayManager.showPopup(text, getString(R.string.popup_no_translation))
+                    Log.d(TAG, "⊘ No dictionary entry found from position $safeStartPos: '$textFromTap'")
+                    overlayManager.showPopup(textFromTap, getString(R.string.popup_no_translation))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing text", e)

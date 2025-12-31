@@ -6,27 +6,26 @@ import com.godtap.dictionary.database.DictionaryEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Repository following Yomitan's fast lookup approach
+ * - Uses indexed queries (no LIKE operations)
+ * - Caches results for speed
+ * - Supports bulk lookups
+ */
 class DictionaryRepository(private val database: AppDatabase) {
     
-    private val cache = LruCache<String, DictionaryEntry>(100)
+    private val cache = LruCache<String, DictionaryEntry>(200)
     
+    /**
+     * Fast indexed search - exact match only
+     * Hits primaryExpression or primaryReading indexes
+     */
     suspend fun search(term: String): DictionaryEntry? = withContext(Dispatchers.IO) {
         // Check cache first
         cache.get(term)?.let { return@withContext it }
         
-        // Search by kanji
-        var entry = database.dictionaryDao().searchByKanji(term).firstOrNull()
-        
-        // If not found, search by reading
-        if (entry == null) {
-            entry = database.dictionaryDao().searchByReading(term).firstOrNull()
-        }
-        
-        // If not found, try prefix search
-        if (entry == null) {
-            val results = database.dictionaryDao().searchByPrefix(term)
-            entry = results.firstOrNull()
-        }
+        // Fast indexed lookup
+        val entry = database.dictionaryDao().findExact(term)
         
         // Cache result if found
         entry?.let { cache.put(term, it) }
@@ -34,30 +33,55 @@ class DictionaryRepository(private val database: AppDatabase) {
         return@withContext entry
     }
     
-    suspend fun searchMultiple(terms: List<String>): DictionaryEntry? = withContext(Dispatchers.IO) {
-        // Search for longest term first (most specific)
-        for (term in terms) {
-            search(term)?.let { return@withContext it }
+    /**
+     * Bulk search - for deinflected forms
+     * Searches multiple terms at once (like Yomitan's findTermsBulk)
+     */
+    suspend fun searchBulk(terms: List<String>): List<DictionaryEntry> = withContext(Dispatchers.IO) {
+        if (terms.isEmpty()) return@withContext emptyList()
+        
+        val uncachedTerms = terms.filter { cache.get(it) == null }
+        
+        if (uncachedTerms.isEmpty()) {
+            return@withContext terms.mapNotNull { cache.get(it) }
         }
-        return@withContext null
+        
+        val entries = database.dictionaryDao().findBulk(uncachedTerms)
+        
+        // Cache all results
+        entries.forEach { entry ->
+            entry.primaryExpression?.let { cache.put(it, entry) }
+            cache.put(entry.primaryReading, entry)
+        }
+        
+        return@withContext entries
     }
     
     /**
-     * Search and return multiple results (for lookup UI)
+     * Search by expression (kanji) only
      */
-    suspend fun searchAll(term: String): List<DictionaryEntry> = withContext(Dispatchers.IO) {
-        val results = mutableListOf<DictionaryEntry>()
-        
-        // Try exact matches first
-        results.addAll(database.dictionaryDao().searchByKanji(term))
-        results.addAll(database.dictionaryDao().searchByReading(term))
-        
-        // If no exact matches, try prefix/substring
-        if (results.isEmpty()) {
-            results.addAll(database.dictionaryDao().searchByPrefix(term))
-        }
-        
-        // Remove duplicates by entryId
-        return@withContext results.distinctBy { it.entryId }
+    suspend fun searchByExpression(expression: String): DictionaryEntry? = withContext(Dispatchers.IO) {
+        database.dictionaryDao().searchByExpression(expression).firstOrNull()
+    }
+    
+    /**
+     * Search by reading (kana) only
+     */
+    suspend fun searchByReading(reading: String): DictionaryEntry? = withContext(Dispatchers.IO) {
+        database.dictionaryDao().searchByReading(reading).firstOrNull()
+    }
+    
+    /**
+     * Get common words for UI
+     */
+    suspend fun getCommonWords(limit: Int = 100): List<DictionaryEntry> = withContext(Dispatchers.IO) {
+        database.dictionaryDao().getCommonWords(limit)
+    }
+    
+    /**
+     * Get entry count
+     */
+    suspend fun getCount(): Int = withContext(Dispatchers.IO) {
+        database.dictionaryDao().getCount()
     }
 }

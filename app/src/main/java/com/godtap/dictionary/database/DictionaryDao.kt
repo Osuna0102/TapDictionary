@@ -5,37 +5,69 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 
+/**
+ * DAO following Yomitan's IndexedDB approach:
+ * - Fast indexed lookups on primaryExpression and primaryReading
+ * - No LIKE queries (they bypass indexes and cause full table scans)
+ * - Exact match queries hit indexes directly
+ */
 @Dao
 interface DictionaryDao {
     
     /**
-     * Search for entry by exact kanji match
+     * Fast indexed exact match (like Yomitan's findTermsBulk with exact match)
+     * Uses index on primaryExpression and primaryReading
      */
-    @Query("SELECT * FROM dictionary_entries WHERE kanjiElements LIKE '%\"kanji\":\"' || :term || '\"%' LIMIT 10")
-    suspend fun searchByKanji(term: String): List<DictionaryEntry>
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE primaryExpression = :term OR primaryReading = :term
+        ORDER BY frequency DESC
+        LIMIT 1
+    """)
+    suspend fun findExact(term: String): DictionaryEntry?
     
     /**
-     * Search for entry by exact reading match
+     * Batch search - finds first match for each term in the list
+     * This is similar to Yomitan's bulk search capability
      */
-    @Query("SELECT * FROM dictionary_entries WHERE readingElements LIKE '%\"reading\":\"' || :term || '\"%' LIMIT 10")
-    suspend fun searchByReading(term: String): List<DictionaryEntry>
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE primaryExpression IN (:terms) OR primaryReading IN (:terms)
+        ORDER BY frequency DESC
+    """)
+    suspend fun findBulk(terms: List<String>): List<DictionaryEntry>
     
     /**
-     * Search by kanji or reading prefix
+     * Search by expression only (kanji form)
      */
-    @Query("SELECT * FROM dictionary_entries WHERE kanjiElements LIKE '%\"kanji\":\"' || :term || '%' OR readingElements LIKE '%\"reading\":\"' || :term || '%' ORDER BY frequency DESC LIMIT 20")
-    suspend fun searchByPrefix(term: String): List<DictionaryEntry>
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE primaryExpression = :expression
+        ORDER BY frequency DESC
+        LIMIT 10
+    """)
+    suspend fun searchByExpression(expression: String): List<DictionaryEntry>
     
     /**
-     * Search by any substring in kanji or reading
+     * Search by reading only (hiragana/katakana)
      */
-    @Query("SELECT * FROM dictionary_entries WHERE kanjiElements LIKE '%' || :term || '%' OR readingElements LIKE '%' || :term || '%' ORDER BY frequency DESC LIMIT 30")
-    suspend fun searchBySubstring(term: String): List<DictionaryEntry>
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE primaryReading = :reading
+        ORDER BY frequency DESC
+        LIMIT 10
+    """)
+    suspend fun searchByReading(reading: String): List<DictionaryEntry>
     
     /**
      * Get most common words (for default display)
      */
-    @Query("SELECT * FROM dictionary_entries WHERE isCommon = 1 ORDER BY frequency DESC LIMIT :limit")
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE isCommon = 1 
+        ORDER BY frequency DESC 
+        LIMIT :limit
+    """)
     suspend fun getCommonWords(limit: Int = 100): List<DictionaryEntry>
     
     /**
@@ -71,6 +103,11 @@ interface DictionaryDao {
     /**
      * Get entries by JLPT level
      */
-    @Query("SELECT * FROM dictionary_entries WHERE jlptLevel = :level ORDER BY frequency DESC LIMIT :limit")
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE jlptLevel = :level 
+        ORDER BY frequency DESC 
+        LIMIT :limit
+    """)
     suspend fun getByJlptLevel(level: Int, limit: Int = 100): List<DictionaryEntry>
 }

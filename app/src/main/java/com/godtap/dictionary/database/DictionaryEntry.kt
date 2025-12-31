@@ -1,6 +1,7 @@
 package com.godtap.dictionary.database
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
@@ -12,20 +13,30 @@ import kotlinx.serialization.decodeFromString
 /**
  * JMdict-compatible dictionary entry entity
  * Supports full JMdict data structure with multiple readings, meanings, and metadata
+ * 
+ * PERFORMANCE: Indexed columns (primaryExpression, primaryReading) enable fast lookups
+ * following Yomitan's approach
  */
-@Entity(tableName = "dictionary_entries")
+@Entity(
+    tableName = "dictionary_entries",
+    indices = [
+        Index(value = ["primaryExpression"]),
+        Index(value = ["primaryReading"]),
+        Index(value = ["frequency"])
+    ]
+)
 @TypeConverters(Converters::class)
 data class DictionaryEntry(
     @PrimaryKey
     val entryId: Long,            // JMdict sequence number
     
-    // Kanji elements (multiple forms possible)
+    // INDEXED COLUMNS FOR FAST LOOKUP (like Yomitan's IndexedDB indices)
+    val primaryExpression: String?,  // First kanji form (null if kana-only word)
+    val primaryReading: String,      // First reading (always present)
+    
+    // Full data structures
     val kanjiElements: List<KanjiElement>,
-    
-    // Reading elements (hiragana/katakana pronunciations)
     val readingElements: List<ReadingElement>,
-    
-    // Sense entries (meanings with context)
     val senses: List<Sense>,
     
     // Metadata
@@ -39,9 +50,9 @@ data class DictionaryEntry(
     fun getPrimaryKanji(): String? = kanjiElements.firstOrNull()?.kanji
     
     /**
-     * Get primary reading (first reading element)
+     * Get first reading element (detailed reading object)
      */
-    fun getPrimaryReading(): String = readingElements.first().reading
+    fun getFirstReadingElement(): ReadingElement = readingElements.first()
     
     /**
      * Get all glosses (English meanings) from all senses

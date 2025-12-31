@@ -101,8 +101,14 @@ class JMdictParser {
         // Calculate frequency
         val frequency = calculateYomichanFrequency(tags, score)
         
+        // Get primary expression and reading for indexed lookups (CRITICAL for speed)
+        val primaryExpression = kanjiElements.firstOrNull()?.kanji
+        val primaryReading = readingElements.first().reading
+        
         return DictionaryEntry(
             entryId = sequence,
+            primaryExpression = primaryExpression,  // Indexed column
+            primaryReading = primaryReading,        // Indexed column
             kanjiElements = kanjiElements,
             readingElements = readingElements,
             senses = senses,

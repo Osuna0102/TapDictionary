@@ -57,7 +57,7 @@ class OverlayManager(private val context: Context) {
                     // This prevents the click from bubbling to parent view
                 }
                 
-                // Create layout params
+                // Create layout params - position BELOW selected text
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.MATCH_PARENT,
@@ -65,9 +65,9 @@ class OverlayManager(private val context: Context) {
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                     PixelFormat.TRANSLUCENT
                 ).apply {
-                    gravity = Gravity.CENTER
+                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                     x = 0
-                    y = -200 // Slightly above center
+                    y = 300 // Position below selected text (adjust as needed)
                 }
                 
                 // Add view to window
