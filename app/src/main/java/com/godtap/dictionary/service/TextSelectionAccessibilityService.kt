@@ -12,9 +12,9 @@ import com.godtap.dictionary.DictionaryApp
 import com.godtap.dictionary.MainActivity
 import com.godtap.dictionary.R
 import com.godtap.dictionary.database.AppDatabase
+import com.godtap.dictionary.lookup.DictionaryLookup
 import com.godtap.dictionary.overlay.OverlayManager
 import com.godtap.dictionary.repository.DictionaryRepository
-import com.godtap.dictionary.tokenizer.JapaneseTokenizer
 import com.godtap.dictionary.util.JapaneseTextDetector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +33,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     
     private lateinit var overlayManager: OverlayManager
     private lateinit var dictionaryRepository: DictionaryRepository
-    private val tokenizer = JapaneseTokenizer()
+    private lateinit var dictionaryLookup: DictionaryLookup
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var lastProcessedText: String? = null
     private var lastProcessedTime: Long = 0
@@ -46,6 +46,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         // Initialize database and repository
         val database = AppDatabase.getDatabase(this)
         dictionaryRepository = DictionaryRepository(database)
+        dictionaryLookup = DictionaryLookup(dictionaryRepository)
     }
     
     override fun onServiceConnected() {
@@ -205,22 +206,13 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 
                 Log.d(TAG, "Processing Japanese text: $text")
                 
-                // FIRST: Try to find exact match for the selected text
-                var entry = dictionaryRepository.search(text)
+                // Use Yomitan-style progressive substring matching (fastest approach)
+                // Tries longest substring first, then progressively shorter
+                val lookupResult = dictionaryLookup.lookup(text)
                 
-                // ONLY if no exact match, then tokenize
-                if (entry == null) {
-                    Log.d(TAG, "No exact match for: $text, tokenizing...")
-                    val tokens = tokenizer.tokenizeSmarter(text)
-                    Log.d(TAG, "Generated ${tokens.size} tokens: ${tokens.take(10)}")
-                    
-                    // Search for dictionary entry (only show first match)
-                    entry = dictionaryRepository.searchMultiple(tokens)
-                } else {
-                    Log.d(TAG, "Found exact match for: $text")
-                }
-                
-                if (entry != null) {
+                if (lookupResult != null) {
+                    val entry = lookupResult.entry
+                    Log.d(TAG, "Found match: '${lookupResult.matchedText}' (length: ${lookupResult.matchLength}) from: '$text'")
                     // Get primary kanji and reading
                     val kanji = entry.getPrimaryKanji()
                     val reading = entry.getPrimaryReading()
