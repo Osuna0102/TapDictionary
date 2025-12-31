@@ -93,7 +93,7 @@
         {
             "label": "Logcat - TextSelectionService",
             "type": "shell",
-            "command": "adb logcat TextSelectionService:D OverlayManager:D *:S",
+            "command": "adb logcat TextSelectionService:D OverlayManager:D '*:S'",
             "isBackground": true,
             "problemMatcher": [],
             "presentation": {

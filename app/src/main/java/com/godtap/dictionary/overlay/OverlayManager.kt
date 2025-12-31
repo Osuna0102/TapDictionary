@@ -29,8 +29,8 @@ class OverlayManager(private val context: Context) {
         Log.d(TAG, "showPopup() called for: $word")
         handler.post {
             try {
-                // Remove existing popup if any
-                hidePopup()
+                // Remove existing popup if any (synchronously to avoid race condition)
+                hidePopupInternal()
                 
                 // Inflate the popup view directly without themed context
                 val inflater = LayoutInflater.from(context)
@@ -79,18 +79,22 @@ class OverlayManager(private val context: Context) {
     }
     
     fun hidePopup() {
-        Log.d(TAG, "hidePopup() called, stacktrace:", Exception())
+        Log.d(TAG, "hidePopup() called")
         handler.post {
-            try {
-                overlayView?.let {
-                    windowManager.removeView(it)
-                    overlayView = null
-                    Log.d(TAG, "Popup hidden")
-                }
-                cancelAutoDismiss()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error hiding popup", e)
+            hidePopupInternal()
+        }
+    }
+    
+    private fun hidePopupInternal() {
+        try {
+            overlayView?.let {
+                windowManager.removeView(it)
+                overlayView = null
+                Log.d(TAG, "Popup hidden")
             }
+            cancelAutoDismiss()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding popup", e)
         }
     }
     
