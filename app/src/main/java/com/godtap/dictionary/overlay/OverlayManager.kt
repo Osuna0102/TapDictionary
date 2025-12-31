@@ -45,17 +45,24 @@ class OverlayManager(private val context: Context) {
                     hidePopup()
                 }
                 
-                // Click outside to close
+                // Detect clicks on transparent background (outside the card)
                 view.setOnClickListener {
-                    // Don't close on click inside
+                    // Click on transparent background - dismiss
+                    hidePopup()
+                }
+                
+                // Don't dismiss when clicking the card itself
+                view.findViewById<View>(R.id.popupCard)?.setOnClickListener {
+                    // Consume click - don't dismiss
+                    // This prevents the click from bubbling to parent view
                 }
                 
                 // Create layout params
                 val params = WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     gravity = Gravity.CENTER

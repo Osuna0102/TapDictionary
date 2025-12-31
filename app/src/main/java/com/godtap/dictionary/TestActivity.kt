@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -53,39 +53,41 @@ class TestActivity : ComponentActivity() {
                 modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
             )
             
-            // Sample Japanese text
+            // Sample Japanese text - wrapped in SelectionContainer to make text selectable
             Card(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "食べる",
-                        fontSize = 32.sp,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    
-                    Text(
-                        text = "私は毎日寿司を食べます。",
-                        fontSize = 20.sp,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    
-                    Text(
-                        text = "本を読む",
-                        fontSize = 24.sp,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    
-                    Text(
-                        text = "学校に行く",
-                        fontSize = 24.sp,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    
-                    Text(
-                        text = "日本語を勉強する",
-                        fontSize = 24.sp
-                    )
+                SelectionContainer {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "食べる",
+                            fontSize = 32.sp,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                        
+                        Text(
+                            text = "私は毎日寿司を食べます。",
+                            fontSize = 20.sp,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                        
+                        Text(
+                            text = "本を読む",
+                            fontSize = 24.sp,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                        
+                        Text(
+                            text = "学校に行く",
+                            fontSize = 24.sp,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                        
+                        Text(
+                            text = "日本語を勉強する",
+                            fontSize = 24.sp
+                        )
+                    }
                 }
             }
             

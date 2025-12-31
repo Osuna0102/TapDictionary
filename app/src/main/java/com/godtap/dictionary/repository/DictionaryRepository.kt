@@ -15,11 +15,11 @@ class DictionaryRepository(private val database: AppDatabase) {
         cache.get(term)?.let { return@withContext it }
         
         // Search by kanji
-        var entry = database.dictionaryDao().searchByKanji(term)
+        var entry = database.dictionaryDao().searchByKanji(term).firstOrNull()
         
         // If not found, search by reading
         if (entry == null) {
-            entry = database.dictionaryDao().searchByReading(term)
+            entry = database.dictionaryDao().searchByReading(term).firstOrNull()
         }
         
         // If not found, try prefix search
@@ -40,5 +40,24 @@ class DictionaryRepository(private val database: AppDatabase) {
             search(term)?.let { return@withContext it }
         }
         return@withContext null
+    }
+    
+    /**
+     * Search and return multiple results (for lookup UI)
+     */
+    suspend fun searchAll(term: String): List<DictionaryEntry> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<DictionaryEntry>()
+        
+        // Try exact matches first
+        results.addAll(database.dictionaryDao().searchByKanji(term))
+        results.addAll(database.dictionaryDao().searchByReading(term))
+        
+        // If no exact matches, try prefix/substring
+        if (results.isEmpty()) {
+            results.addAll(database.dictionaryDao().searchByPrefix(term))
+        }
+        
+        // Remove duplicates by entryId
+        return@withContext results.distinctBy { it.entryId }
     }
 }

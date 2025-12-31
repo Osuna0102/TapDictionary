@@ -35,6 +35,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     private lateinit var dictionaryRepository: DictionaryRepository
     private val tokenizer = JapaneseTokenizer()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var lastProcessedText: String? = null
+    private var lastProcessedTime: Long = 0
     
     override fun onCreate() {
         super.onCreate()
@@ -192,29 +194,57 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     private fun processJapaneseText(text: String, event: AccessibilityEvent) {
         serviceScope.launch {
             try {
+                // Debounce: ignore rapid repeated selections within 500ms
+                val currentTime = System.currentTimeMillis()
+                if (text == lastProcessedText && (currentTime - lastProcessedTime) < 500) {
+                    Log.d(TAG, "Ignoring duplicate selection: $text")
+                    return@launch
+                }
+                lastProcessedText = text
+                lastProcessedTime = currentTime
+                
                 Log.d(TAG, "Processing Japanese text: $text")
                 
-                // Tokenize the text
-                val tokens = tokenizer.tokenizeSmarter(text)
-                Log.d(TAG, "Generated ${tokens.size} tokens: ${tokens.take(10)}")
+                // FIRST: Try to find exact match for the selected text
+                var entry = dictionaryRepository.search(text)
                 
-                // Search for dictionary entry
-                val entry = dictionaryRepository.searchMultiple(tokens)
+                // ONLY if no exact match, then tokenize
+                if (entry == null) {
+                    Log.d(TAG, "No exact match for: $text, tokenizing...")
+                    val tokens = tokenizer.tokenizeSmarter(text)
+                    Log.d(TAG, "Generated ${tokens.size} tokens: ${tokens.take(10)}")
+                    
+                    // Search for dictionary entry (only show first match)
+                    entry = dictionaryRepository.searchMultiple(tokens)
+                } else {
+                    Log.d(TAG, "Found exact match for: $text")
+                }
                 
                 if (entry != null) {
-                    Log.d(TAG, "Found entry: ${entry.kanji ?: entry.reading} -> ${entry.glosses}")
+                    // Get primary kanji and reading
+                    val kanji = entry.getPrimaryKanji()
+                    val reading = entry.getPrimaryReading()
+                    val rawGlosses = entry.getAllGlosses()
+                    val partsOfSpeech = entry.getPartsOfSpeech()
+                    
+                    // Parse Yomichan structured content (JSON format)
+                    val glosses = rawGlosses.map { parseYomichanGloss(it) }
+                    
+                    Log.d(TAG, "Found entry: ${kanji ?: reading} -> ${glosses.joinToString(", ")}")
                     
                     // Format the word display
-                    val wordDisplay = if (entry.kanji != null) {
-                        "${entry.kanji} (${entry.reading})"
+                    val wordDisplay = if (kanji != null) {
+                        "$kanji ($reading)"
                     } else {
-                        entry.reading
+                        reading
                     }
                     
                     // Format the translation
                     val translation = buildString {
-                        entry.partOfSpeech?.let { append("[$it]\n") }
-                        append(entry.glosses)
+                        if (partsOfSpeech.isNotEmpty()) {
+                            append("[${partsOfSpeech.first()}]\n")
+                        }
+                        append(glosses.joinToString("; "))
                     }
                     
                     overlayManager.showPopup(wordDisplay, translation)
@@ -227,7 +257,32 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 overlayManager.showPopup(text, "Error: ${e.message}")
             }
         }
-    }           // Later we'll add dictionary lookup
+    }
+    
+    /**
+     * Parse Yomichan structured content JSON to plain text
+     */
+    private fun parseYomichanGloss(gloss: String): String {
+        return try {
+            // Yomichan uses structured-content format with nested JSON
+            // Extract just the text content
+            if (gloss.startsWith("[") || gloss.startsWith("{")) {
+                // Try to extract "content" fields
+                val contentRegex = "\"content\":\"([^\"]+)\"".toRegex()
+                val matches = contentRegex.findAll(gloss)
+                val extracted = matches.map { it.groupValues[1] }.filter { it.isNotBlank() }.toList()
+                if (extracted.isNotEmpty()) {
+                    extracted.joinToString("; ")
+                } else {
+                    gloss // Fallback to original
+                }
+            } else {
+                gloss // Plain text gloss
+            }
+        } catch (e: Exception) {
+            gloss // Fallback to original on error
+        }
+    }
     
     override fun onInterrupt() {
         Log.d(TAG, "Service interrupted")

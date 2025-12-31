@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.sp
 import com.godtap.dictionary.ui.theme.GodTapDictionaryTheme
 import com.godtap.dictionary.util.PermissionHelper
 import com.godtap.dictionary.overlay.OverlayManager
+import com.godtap.dictionary.downloader.DictionaryDownloader
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     
@@ -51,14 +53,62 @@ class MainActivity : ComponentActivity() {
     
     @Composable
     fun MainScreen() {
+        val scope = rememberCoroutineScope()
+        val downloader = remember { DictionaryDownloader(applicationContext) }
+        
         var overlayPermissionGranted by remember { 
             mutableStateOf(PermissionHelper.hasOverlayPermission(this))
         }
         var accessibilityEnabled by remember { 
             mutableStateOf(PermissionHelper.isAccessibilityServiceEnabled(this))
         }
+        var dictionaryImported by remember { mutableStateOf(false) }
+        var downloadProgress by remember { mutableStateOf(0f) }
+        var downloadStage by remember { mutableStateOf("") }
+        var isDownloading by remember { mutableStateOf(false) }
+        var downloadError by remember { mutableStateOf<String?>(null) }
         
         LaunchedEffect(Unit) {
+            // Check if dictionary is already imported
+            dictionaryImported = downloader.isDictionaryImported()
+            
+            // If not imported, start download automatically
+            if (!dictionaryImported && !isDownloading) {
+                isDownloading = true
+                downloadStage = "Starting download..."
+                
+                scope.launch {
+                    try {
+                        downloader.downloadAndImport(
+                            listener = object : DictionaryDownloader.DownloadProgressListener {
+                                override fun onProgress(bytesDownloaded: Long, totalBytes: Long, stage: String) {
+                                    downloadStage = stage
+                                    downloadProgress = if (totalBytes > 0) {
+                                        (bytesDownloaded.toFloat() / totalBytes.toFloat())
+                                    } else {
+                                        0.5f
+                                    }
+                                }
+                                
+                                override fun onComplete() {
+                                    dictionaryImported = true
+                                    isDownloading = false
+                                    downloadStage = "Dictionary ready!"
+                                }
+                                
+                                override fun onError(error: Exception) {
+                                    downloadError = error.message
+                                    isDownloading = false
+                                }
+                            }
+                        )
+                    } catch (e: Exception) {
+                        downloadError = e.message
+                        isDownloading = false
+                    }
+                }
+            }
+            
             // Refresh permission status periodically
             while (true) {
                 kotlinx.coroutines.delay(1000)
@@ -93,6 +143,81 @@ class MainActivity : ComponentActivity() {
             )
             
             Spacer(modifier = Modifier.height(48.dp))
+            
+            // Step 0: Dictionary Download
+            if (!dictionaryImported || isDownloading) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (downloadError != null) 
+                            MaterialTheme.colorScheme.errorContainer 
+                        else 
+                            MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "Dictionary Setup",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        if (downloadError != null) {
+                            Text(
+                                text = "Download failed: $downloadError",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    downloadError = null
+                                    isDownloading = true
+                                    scope.launch {
+                                        try {
+                                            downloader.downloadAndImport(
+                                                listener = object : DictionaryDownloader.DownloadProgressListener {
+                                                    override fun onProgress(bytesDownloaded: Long, totalBytes: Long, stage: String) {
+                                                        downloadStage = stage
+                                                        downloadProgress = if (totalBytes > 0) {
+                                                            (bytesDownloaded.toFloat() / totalBytes.toFloat())
+                                                        } else 0.5f
+                                                    }
+                                                    override fun onComplete() {
+                                                        dictionaryImported = true
+                                                        isDownloading = false
+                                                    }
+                                                    override fun onError(error: Exception) {
+                                                        downloadError = error.message
+                                                        isDownloading = false
+                                                    }
+                                                }
+                                            )
+                                        } catch (e: Exception) {
+                                            downloadError = e.message
+                                            isDownloading = false
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Retry Download")
+                            }
+                        } else if (isDownloading) {
+                            Text(text = downloadStage)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LinearProgressIndicator(
+                                progress = downloadProgress,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Text(text = "✓ Dictionary ready!")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
             
             // Step 1: Overlay Permission
             PermissionCard(

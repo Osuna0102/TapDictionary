@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.20"
 }
 
 android {
@@ -47,6 +48,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Fix Kuromoji duplicate files
+            excludes += "/META-INF/CONTRIBUTORS.md"
+            excludes += "/META-INF/LICENSE.md"
         }
     }
 }
@@ -79,6 +83,15 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-service:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+    
+    // Japanese Tokenization - Kuromoji
+    implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
+    
+    // JSON Parsing
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    
+    // OkHttp for dictionary downloads
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     
     // Testing
     testImplementation("junit:junit:4.13.2")
