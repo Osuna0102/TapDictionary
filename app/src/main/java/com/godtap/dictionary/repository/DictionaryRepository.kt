@@ -1,9 +1,11 @@
 package com.godtap.dictionary.repository
 
+import android.content.Context
 import android.util.Log
 import android.util.LruCache
 import com.godtap.dictionary.database.AppDatabase
 import com.godtap.dictionary.database.DictionaryEntry
+import com.godtap.dictionary.manager.DictionaryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -12,6 +14,7 @@ import kotlinx.coroutines.withContext
  * - Uses indexed queries (no LIKE operations)
  * - Caches results for speed
  * - Supports bulk lookups
+ * - Supports multiple dictionaries
  */
 class DictionaryRepository(private val database: AppDatabase) {
     
@@ -20,6 +23,7 @@ class DictionaryRepository(private val database: AppDatabase) {
     /**
      * Fast indexed search - exact match only
      * Hits primaryExpression or primaryReading indexes
+     * Searches all dictionaries (backwards compatible)
      */
     suspend fun search(term: String): DictionaryEntry? = withContext(Dispatchers.IO) {
         // Check cache first
@@ -28,11 +32,11 @@ class DictionaryRepository(private val database: AppDatabase) {
             return@withContext it
         }
         
-        // Fast indexed lookup
-        val entry = database.dictionaryDao().findExact(term)
+        // Fast indexed lookup (all dictionaries)
+        val entry = database.dictionaryDao().findExact(term, null)
         
         if (entry != null) {
-            Log.d("DictionaryRepo", "✓ DB found '$term' → ${entry.primaryExpression ?: entry.primaryReading}")
+            Log.d("DictionaryRepo", "✓ DB found '$term' → ${entry.primaryExpression ?: entry.primaryReading} (${entry.dictionaryId})")
             // Cache result
             cache.put(term, entry)
         } else {
@@ -45,6 +49,7 @@ class DictionaryRepository(private val database: AppDatabase) {
     /**
      * Bulk search - for deinflected forms
      * Searches multiple terms at once (like Yomitan's findTermsBulk)
+     * Searches all dictionaries
      */
     suspend fun searchBulk(terms: List<String>): List<DictionaryEntry> = withContext(Dispatchers.IO) {
         if (terms.isEmpty()) return@withContext emptyList()
@@ -55,7 +60,7 @@ class DictionaryRepository(private val database: AppDatabase) {
             return@withContext terms.mapNotNull { cache.get(it) }
         }
         
-        val entries = database.dictionaryDao().findBulk(uncachedTerms)
+        val entries = database.dictionaryDao().findBulk(uncachedTerms, null)
         
         // Cache all results
         entries.forEach { entry ->

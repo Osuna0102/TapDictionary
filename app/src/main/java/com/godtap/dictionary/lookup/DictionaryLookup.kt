@@ -2,56 +2,142 @@ package com.godtap.dictionary.lookup
 
 import android.util.Log
 import com.godtap.dictionary.database.DictionaryEntry
+import com.godtap.dictionary.deinflection.DeinflectionResult
 import com.godtap.dictionary.deinflection.JapaneseDeinflector
+import com.godtap.dictionary.deinflection.SpanishLanguageTransformer
 import com.godtap.dictionary.repository.DictionaryRepository
 
 /**
- * Dictionary lookup using Yomitan's exact algorithm:
+ * Multi-language dictionary lookup
  * 
- * 1. Progressive substring matching (longest first)
- * 2. Deinflection for each substring
- * 3. Fast indexed database lookups
- * 4. Returns first match found
+ * Supports different lookup strategies per language:
+ * - Japanese: Progressive substring with deinflection
+ * - Spanish: Word boundary extraction + simple transformations
+ * - Korean: Similar to Spanish (space-separated)
  * 
- * This matches Yomitan's Translator._findTermsInternal() logic
+ * This matches Yomitan's Translator._findTermsInternal() logic for Japanese
  */
-class DictionaryLookup(private val repository: DictionaryRepository) {
+class DictionaryLookup(
+    private val repository: DictionaryRepository,
+    private val sourceLanguage: String = "ja" // Default to Japanese for backward compatibility
+) {
     
     companion object {
         private const val TAG = "DictionaryLookup"
         private const val MAX_LOOKUP_LENGTH = 25 // Yomitan uses similar limits
     }
     
-    private val deinflector = JapaneseDeinflector()
+    private val japaneseDeinflector = JapaneseDeinflector()
+    private val spanishTransformer = SpanishLanguageTransformer()
     
     /**
-     * Main lookup function - follows Yomitan's progressive substring approach
+     * Main lookup function - language-aware
      * 
-     * Algorithm (from Yomitan's translator.js):
-     * 1. Scan ONLY from the start of the selected text (position 0)
-     * 2. For each substring from longest to shortest:
-     *    a. Generate deinflected forms
-     *    b. Search database for each form
-     *    c. Return first match
-     * 
-     * This matches how Yomitan works: it scans from the cursor position forward,
-     * not searching for random words elsewhere in the text.
+     * For Japanese: Progressive substring matching with deinflection
+     * For Spanish/Korean: Extract word at position, then look up
      */
     suspend fun lookup(text: String): LookupResult? {
         if (text.isBlank()) return null
         
-        val searchText = text.take(MAX_LOOKUP_LENGTH)
-        
-        // Always scan from position 0 (start of selection/tap)
-        // This matches Yomitan's behavior: find the word starting at the cursor position
-        return lookupFromPosition(searchText, 0)
+        return when (sourceLanguage) {
+            "ja" -> lookupJapanese(text)
+            "es", "ko", "zh" -> lookupSpaceDelimited(text)
+            else -> lookupSpaceDelimited(text) // Default to space-delimited
+        }
     }
     
     /**
-     * Standard progressive substring matching from start of text
+     * Japanese lookup: Progressive substring matching (Yomitan algorithm)
+     */
+    private suspend fun lookupJapanese(text: String): LookupResult? {
+        val searchText = text.take(MAX_LOOKUP_LENGTH)
+        return lookupFromPositionJapanese(searchText, 0)
+    }
+    
+    /**
+     * Spanish/Korean lookup: Extract word at start position
+     * These languages use spaces to separate words, so we extract the first word
+     */
+    private suspend fun lookupSpaceDelimited(text: String): LookupResult? {
+        // For space-delimited languages, extract the first word
+        val firstWord = extractFirstWord(text)
+        if (firstWord.isEmpty()) return null
+        
+        Log.d(TAG, "Extracted word: '$firstWord'")
+        
+        // Get language-appropriate transformations
+        val transformations = getTransformations(firstWord)
+        
+        Log.d(TAG, "  Generated ${transformations.size} forms: ${transformations.take(3).map { it.term }}...")
+        
+        // Try each transformation
+        for (transformation in transformations) {
+            val entry = repository.search(transformation.term)
+            
+            if (entry != null) {
+                Log.d(TAG, "✓ Match found: '$firstWord' → '${transformation.term}'")
+                
+                return LookupResult(
+                    entry = entry,
+                    matchedText = firstWord,
+                    matchLength = firstWord.length,
+                    deinflectedForm = transformation.term,
+                    inflectionRules = transformation.rules,
+                    sourceOffset = 0
+                )
+            }
+        }
+        
+        Log.d(TAG, "No match found for: '$firstWord'")
+        return null
+    }
+    
+    /**
+     * Extract first complete word from text (space-delimited languages)
+     */
+    private fun extractFirstWord(text: String): String {
+        val wordSeparators = setOf(' ', '\n', '\t', '.', ',', ';', ':', '!', '¡', '?', '¿',
+                                     '(', ')', '[', ']', '{', '}', '"', '\'', '—', '/')
+        
+        // Skip leading separators
+        var start = 0
+        while (start < text.length && text[start] in wordSeparators) {
+            start++
+        }
+        
+        if (start >= text.length) return ""
+        
+        // Find end of word
+        var end = start
+        while (end < text.length && text[end] !in wordSeparators) {
+            end++
+        }
+        
+        return text.substring(start, end)
+    }
+    
+    /**
+     * Get appropriate transformations for the source language
+     */
+    private fun getTransformations(word: String): List<DeinflectionResult> {
+        return when (sourceLanguage) {
+            "es" -> spanishTransformer.transform(word)
+            "ko", "zh" -> {
+                // For Korean/Chinese, just try original and lowercase
+                listOf(
+                    DeinflectionResult(word, emptyList()),
+                    DeinflectionResult(word.lowercase(), emptyList())
+                ).distinctBy { it.term }
+            }
+            else -> listOf(DeinflectionResult(word, emptyList()))
+        }
+    }
+    
+    /**
+     * Standard progressive substring matching from start of text (Japanese only)
      * This is Yomitan's core algorithm: scan forward from cursor position
      */
-    private suspend fun lookupFromPosition(text: String, offset: Int = 0, maxLength: Int = MAX_LOOKUP_LENGTH): LookupResult? {
+    private suspend fun lookupFromPositionJapanese(text: String, offset: Int = 0, maxLength: Int = MAX_LOOKUP_LENGTH): LookupResult? {
         val searchText = text.take(maxLength)
         
         // Progressive substring matching (like Yomitan's _getAlgorithmDeinflections)
@@ -62,7 +148,7 @@ class DictionaryLookup(private val repository: DictionaryRepository) {
             Log.d(TAG, "Trying substring (len=$length): '$substring'")
             
             // Deinflect the substring (generates all possible dictionary forms)
-            val deinflections = deinflector.deinflect(substring)
+            val deinflections = japaneseDeinflector.deinflect(substring)
             
             Log.d(TAG, "  Generated ${deinflections.size} forms: ${deinflections.take(3).map { it.term }}...")
             

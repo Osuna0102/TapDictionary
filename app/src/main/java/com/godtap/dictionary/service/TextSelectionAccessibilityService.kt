@@ -17,6 +17,8 @@ import com.godtap.dictionary.lookup.DictionaryLookup
 import com.godtap.dictionary.overlay.OverlayManager
 import com.godtap.dictionary.repository.DictionaryRepository
 import com.godtap.dictionary.util.JapaneseTextDetector
+import com.godtap.dictionary.util.LanguageDetector
+import com.godtap.dictionary.manager.DictionaryManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,7 +36,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     
     private lateinit var overlayManager: OverlayManager
     private lateinit var dictionaryRepository: DictionaryRepository
-    private lateinit var dictionaryLookup: DictionaryLookup
+    private lateinit var dictionaryManager: DictionaryManager
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var lastProcessedText: String? = null
     private var lastProcessedTime: Long = 0
@@ -47,7 +49,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         // Initialize database and repository
         val database = AppDatabase.getDatabase(this)
         dictionaryRepository = DictionaryRepository(database)
-        dictionaryLookup = DictionaryLookup(dictionaryRepository)
+        // DictionaryLookup will be created per-lookup with the appropriate language
+        dictionaryManager = DictionaryManager(this)
     }
     
     override fun onServiceConnected() {
@@ -88,19 +91,33 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         val fullText = extractFullText(event)
         
         if (fullText != null && fullText.isNotBlank()) {
-            // Check if it contains Japanese
-            if (JapaneseTextDetector.containsJapanese(fullText)) {
-                Log.d(TAG, "Japanese text detected (length ${fullText.length}): ${fullText.take(50)}...")
+            // Check active dictionary to determine which language to detect
+            serviceScope.launch {
+                val activeDictionary = dictionaryManager.getActiveDictionary()
+                if (activeDictionary == null) {
+                    Log.d(TAG, "No active dictionary, ignoring text selection")
+                    return@launch
+                }
                 
-                // Find the tap position using fromIndex/toIndex on the FULL text
-                val tapPosition = findTapPosition(event, fullText)
+                val sourceLang = activeDictionary.sourceLanguage
+                Log.d(TAG, "Active dictionary: ${activeDictionary.name}, source language: $sourceLang")
                 
-                if (tapPosition >= 0) {
-                    Log.d(TAG, "✓ Tap detected at position $tapPosition: '${fullText.getOrNull(tapPosition)}'")
-                    processJapaneseTextFromPosition(fullText, tapPosition)
+                // Check if text matches the active dictionary's language
+                if (LanguageDetector.matchesLanguage(fullText, sourceLang)) {
+                    Log.d(TAG, "$sourceLang text detected (length ${fullText.length}): ${fullText.take(50)}...")
+                    
+                    // Find the tap position using fromIndex/toIndex on the FULL text
+                    val tapPosition = findTapPosition(event, fullText)
+                    
+                    if (tapPosition >= 0) {
+                        Log.d(TAG, "✓ Tap detected at position $tapPosition: '${fullText.getOrNull(tapPosition)}'")
+                        processTextFromPosition(fullText, tapPosition, sourceLang)
+                    } else {
+                        Log.d(TAG, "⊘ Could not determine tap position, scanning from start")
+                        processTextFromPosition(fullText, 0, sourceLang)
+                    }
                 } else {
-                    Log.d(TAG, "⊘ Could not determine tap position, scanning from start")
-                    processJapaneseTextFromPosition(fullText, 0)
+                    Log.d(TAG, "Text language doesn't match active dictionary ($sourceLang)")
                 }
             }
         } else {
@@ -175,8 +192,11 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         if (event.packageName == packageName) return
         
         val text = event.text.firstOrNull()?.toString()
-        if (text != null && JapaneseTextDetector.containsJapanese(text)) {
-            Log.d(TAG, "Clicked on Japanese text: $text")
+        if (text != null) {
+            val detectedLang = LanguageDetector.detectLanguage(text)
+            if (detectedLang != null) {
+                Log.d(TAG, "Clicked on $detectedLang text: $text")
+            }
         }
     }
     
@@ -237,10 +257,13 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     }
     
     /**
-     * Process Japanese text starting from a specific character position
+     * Process text starting from a specific character position
      * This is critical: scan from WHERE the user tapped, not from position 0!
+     * @param text The full text
+     * @param startPosition Position where user tapped
+     * @param languageCode ISO 639-1 language code (ja, es, ko, etc.)
      */
-    private fun processJapaneseTextFromPosition(text: String, startPosition: Int) {
+    private fun processTextFromPosition(text: String, startPosition: Int, languageCode: String) {
         serviceScope.launch {
             try {
                 // Debounce: ignore rapid repeated selections within 500ms
@@ -252,19 +275,33 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 lastProcessedText = text
                 lastProcessedTime = currentTime
                 
-                // Get the substring starting from the tapped position
-                val safeStartPos = startPosition.coerceIn(0, text.length)
-                val textFromTap = text.substring(safeStartPos)
+                // Create language-specific lookup
+                val dictionaryLookup = DictionaryLookup(dictionaryRepository, languageCode)
                 
-                Log.d(TAG, "Processing from position $safeStartPos: '$textFromTap' (full text: '$text')")
+                // For space-delimited languages (Spanish, Korean), extract word at tap position
+                // For Japanese, use substring from tap position
+                val textToLookup = if (languageCode in listOf("es", "ko", "zh")) {
+                    extractWordAtPosition(text, startPosition, languageCode)
+                } else {
+                    // Japanese: substring from tap position
+                    val safeStartPos = startPosition.coerceIn(0, text.length)
+                    text.substring(safeStartPos)
+                }
                 
-                // Use Yomitan-style progressive substring matching
-                // Scans from the tap position forward (not from position 0!)
-                val lookupResult = dictionaryLookup.lookup(textFromTap)
+                if (textToLookup.isNullOrEmpty()) {
+                    Log.d(TAG, "⊘ No word found at position $startPosition")
+                    return@launch
+                }
+                
+                Log.d(TAG, "Processing from position $startPosition: '$textToLookup' (full text: '$text')")
+                
+                // Use Yomitan-style progressive substring matching for Japanese
+                // Or word lookup for space-delimited languages
+                val lookupResult = dictionaryLookup.lookup(textToLookup)
                 
                 if (lookupResult != null) {
                     val entry = lookupResult.entry
-                    Log.d(TAG, "✓ Found match: '${lookupResult.matchedText}' (length: ${lookupResult.matchLength}) at position $safeStartPos")
+                    Log.d(TAG, "✓ Found match: '${lookupResult.matchedText}' (length: ${lookupResult.matchLength}) at position $startPosition")
                     
                     // Get primary kanji and reading
                     val kanji = entry.getPrimaryKanji()
@@ -294,14 +331,43 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     
                     overlayManager.showPopup(wordDisplay, translation)
                 } else {
-                    Log.d(TAG, "⊘ No dictionary entry found from position $safeStartPos: '$textFromTap'")
-                    overlayManager.showPopup(textFromTap, getString(R.string.popup_no_translation))
+                    Log.d(TAG, "⊘ No dictionary entry found from position $startPosition: '$textToLookup'")
+                    overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing text", e)
                 overlayManager.showPopup(text, "Error: ${e.message}")
             }
         }
+    }
+    
+    /**
+     * Extract word at position for space-delimited languages (Spanish, Korean, Chinese)
+     */
+    private fun extractWordAtPosition(text: String, position: Int, languageCode: String): String? {
+        if (position < 0 || position >= text.length) return null
+        
+        val wordSeparators = setOf(' ', '\n', '\t', '.', ',', ';', ':', '!', '¡', '?', '¿',
+                                     '(', ')', '[', ']', '{', '}', '"', '\'', '—', '/', '-')
+        
+        // Find start of word (scan backward from position)
+        var start = position
+        while (start > 0 && text[start - 1] !in wordSeparators) {
+            start--
+        }
+        
+        // Find end of word (scan forward from position)
+        var end = position
+        while (end < text.length && text[end] !in wordSeparators) {
+            end++
+        }
+        
+        if (start >= end) return null
+        
+        val word = text.substring(start, end).trim()
+        Log.d(TAG, "Extracted word at position $position: '$word' (bounds: $start-$end)")
+        
+        return if (word.isEmpty()) null else word
     }
     
     /**

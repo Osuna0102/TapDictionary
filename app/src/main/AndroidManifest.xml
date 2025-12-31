@@ -54,6 +54,13 @@
             android:label="Dictionary Debug"
             android:theme="@style/Theme.GodTapDictionary" />
 
+        <!-- Dictionary Management Activity -->
+        <activity
+            android:name=".ui.DictionaryManagementActivity"
+            android:exported="false"
+            android:label="Manage Dictionaries"
+            android:theme="@style/Theme.GodTapDictionary" />
+
         <!-- Accessibility Service -->
         <service
             android:name=".service.TextSelectionAccessibilityService"

@@ -17,14 +17,16 @@ interface DictionaryDao {
     /**
      * Fast indexed exact match (like Yomitan's findTermsBulk with exact match)
      * Uses index on primaryExpression and primaryReading
+     * Can filter by specific dictionaries
      */
     @Query("""
         SELECT * FROM dictionary_entries 
-        WHERE primaryExpression = :term OR primaryReading = :term
+        WHERE (primaryExpression = :term OR primaryReading = :term)
+        AND (:dictionaryIds IS NULL OR dictionaryId IN (:dictionaryIds))
         ORDER BY frequency DESC
         LIMIT 1
     """)
-    suspend fun findExact(term: String): DictionaryEntry?
+    suspend fun findExact(term: String, dictionaryIds: List<String>? = null): DictionaryEntry?
     
     /**
      * Batch search - finds first match for each term in the list
@@ -32,10 +34,11 @@ interface DictionaryDao {
      */
     @Query("""
         SELECT * FROM dictionary_entries 
-        WHERE primaryExpression IN (:terms) OR primaryReading IN (:terms)
+        WHERE (primaryExpression IN (:terms) OR primaryReading IN (:terms))
+        AND (:dictionaryIds IS NULL OR dictionaryId IN (:dictionaryIds))
         ORDER BY frequency DESC
     """)
-    suspend fun findBulk(terms: List<String>): List<DictionaryEntry>
+    suspend fun findBulk(terms: List<String>, dictionaryIds: List<String>? = null): List<DictionaryEntry>
     
     /**
      * Search by expression only (kanji form)
@@ -112,6 +115,18 @@ interface DictionaryDao {
      */
     @Query("DELETE FROM dictionary_entries")
     suspend fun deleteAll()
+    
+    /**
+     * Delete entries for a specific dictionary
+     */
+    @Query("DELETE FROM dictionary_entries WHERE dictionaryId = :dictionaryId")
+    suspend fun deleteByDictionary(dictionaryId: String)
+    
+    /**
+     * Get entry count for a specific dictionary
+     */
+    @Query("SELECT COUNT(*) FROM dictionary_entries WHERE dictionaryId = :dictionaryId")
+    suspend fun getCountByDictionary(dictionaryId: String): Int
     
     /**
      * Get entries by JLPT level

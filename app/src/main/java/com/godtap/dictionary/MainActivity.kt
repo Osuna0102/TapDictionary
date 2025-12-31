@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.godtap.dictionary.ui.theme.GodTapDictionaryTheme
+import com.godtap.dictionary.ui.DictionaryManagementActivity
 import com.godtap.dictionary.util.PermissionHelper
 import com.godtap.dictionary.overlay.OverlayManager
 import com.godtap.dictionary.downloader.DictionaryDownloader
@@ -301,15 +304,44 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         
-                        // Debug button
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Info about managing dictionaries
+                        Text(
+                            text = "Manage your dictionaries:",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        
+                        // Manage Dictionaries button
                         Button(
-                            onClick = { launchDebugScreen() },
+                            onClick = { launchDictionaryManagement() },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp),
+                                .padding(top = 8.dp)
+                                .height(56.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.tertiary
+                                containerColor = MaterialTheme.colorScheme.primary
                             )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Manage Dictionaries", fontSize = 16.sp)
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Debug button
+                        OutlinedButton(
+                            onClick = { launchDebugScreen() },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("🔍 Dictionary Debug")
                         }
@@ -377,6 +409,11 @@ class MainActivity : ComponentActivity() {
     
     private fun launchDebugScreen() {
         val intent = Intent(this, DictionaryDebugActivity::class.java)
+        startActivity(intent)
+    }
+    
+    private fun launchDictionaryManagement() {
+        val intent = Intent(this, DictionaryManagementActivity::class.java)
         startActivity(intent)
     }
     

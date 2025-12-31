@@ -22,13 +22,17 @@ import kotlinx.serialization.decodeFromString
     indices = [
         Index(value = ["primaryExpression"]),
         Index(value = ["primaryReading"]),
-        Index(value = ["frequency"])
+        Index(value = ["frequency"]),
+        Index(value = ["dictionaryId"])
     ]
 )
 @TypeConverters(Converters::class)
 data class DictionaryEntry(
-    @PrimaryKey
-    val entryId: Long,            // JMdict sequence number
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,              // Auto-generated ID
+    
+    val entryId: Long,             // JMdict sequence number (or unique per dictionary)
+    val dictionaryId: String = "jmdict_en", // Dictionary this entry belongs to
     
     // INDEXED COLUMNS FOR FAST LOOKUP (like Yomitan's IndexedDB indices)
     val primaryExpression: String?,  // First kanji form (null if kana-only word)
