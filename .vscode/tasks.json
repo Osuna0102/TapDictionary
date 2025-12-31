@@ -1,0 +1,146 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Debug APK",
+            "type": "shell",
+            "command": "export JAVA_HOME=$(/usr/libexec/java_home -v 17) && ./gradlew assembleDebug",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Install APK",
+            "type": "shell",
+            "command": "adb install -r app/build/outputs/apk/debug/app-debug.apk",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Build and Install",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Build Debug APK",
+                "Install APK"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Launch App",
+            "type": "shell",
+            "command": "adb shell am start -n com.godtap.dictionary/com.godtap.dictionary.MainActivity",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Stop App",
+            "type": "shell",
+            "command": "adb shell am force-stop com.godtap.dictionary",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Clear App Data",
+            "type": "shell",
+            "command": "adb shell pm clear com.godtap.dictionary",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Logcat - All",
+            "type": "shell",
+            "command": "adb logcat",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Logcat - App Only",
+            "type": "shell",
+            "command": "adb logcat | grep 'com.godtap.dictionary'",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Logcat - TextSelectionService",
+            "type": "shell",
+            "command": "adb logcat TextSelectionService:D OverlayManager:D *:S",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Clear Logcat",
+            "type": "shell",
+            "command": "adb logcat -c",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Build, Install and Launch with Logcat",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Build Debug APK",
+                "Stop App",
+                "Install APK",
+                "Clear Logcat",
+                "Launch App",
+                "Logcat - TextSelectionService"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Quick Deploy",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Build Debug APK",
+                "Install APK",
+                "Stop App"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        }
+    ]
+}
