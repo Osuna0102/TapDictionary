@@ -1,5 +1,6 @@
 package com.godtap.dictionary.repository
 
+import android.util.Log
 import android.util.LruCache
 import com.godtap.dictionary.database.AppDatabase
 import com.godtap.dictionary.database.DictionaryEntry
@@ -22,13 +23,21 @@ class DictionaryRepository(private val database: AppDatabase) {
      */
     suspend fun search(term: String): DictionaryEntry? = withContext(Dispatchers.IO) {
         // Check cache first
-        cache.get(term)?.let { return@withContext it }
+        cache.get(term)?.let {
+            Log.d("DictionaryRepo", "✓ Cache hit for: '$term'")
+            return@withContext it
+        }
         
         // Fast indexed lookup
         val entry = database.dictionaryDao().findExact(term)
         
-        // Cache result if found
-        entry?.let { cache.put(term, it) }
+        if (entry != null) {
+            Log.d("DictionaryRepo", "✓ DB found '$term' → ${entry.primaryExpression ?: entry.primaryReading}")
+            // Cache result
+            cache.put(term, entry)
+        } else {
+            Log.d("DictionaryRepo", "⊘ DB miss for: '$term'")
+        }
         
         return@withContext entry
     }
@@ -69,6 +78,14 @@ class DictionaryRepository(private val database: AppDatabase) {
      */
     suspend fun searchByReading(reading: String): DictionaryEntry? = withContext(Dispatchers.IO) {
         database.dictionaryDao().searchByReading(reading).firstOrNull()
+    }
+    
+    /**
+     * Fuzzy search - finds entries containing the query string
+     * Useful for debugging and finding similar entries
+     */
+    suspend fun searchFuzzy(query: String, limit: Int = 20): List<DictionaryEntry> = withContext(Dispatchers.IO) {
+        database.dictionaryDao().searchFuzzy(query, limit)
     }
     
     /**

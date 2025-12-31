@@ -71,6 +71,19 @@ interface DictionaryDao {
     suspend fun getCommonWords(limit: Int = 100): List<DictionaryEntry>
     
     /**
+     * Fuzzy search - finds entries containing the query string
+     * WARNING: Uses LIKE which is slow, only for debugging
+     */
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE primaryExpression LIKE '%' || :query || '%' 
+           OR primaryReading LIKE '%' || :query || '%'
+        ORDER BY frequency DESC 
+        LIMIT :limit
+    """)
+    suspend fun searchFuzzy(query: String, limit: Int = 20): List<DictionaryEntry>
+    
+    /**
      * Search by entry ID
      */
     @Query("SELECT * FROM dictionary_entries WHERE entryId = :entryId LIMIT 1")

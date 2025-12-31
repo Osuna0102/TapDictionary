@@ -300,6 +300,19 @@ class MainActivity : ComponentActivity() {
                                 Text(getString(R.string.test_button))
                             }
                         }
+                        
+                        // Debug button
+                        Button(
+                            onClick = { launchDebugScreen() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.tertiary
+                            )
+                        ) {
+                            Text("🔍 Dictionary Debug")
+                        }
                     }
                 }
             }
@@ -359,6 +372,11 @@ class MainActivity : ComponentActivity() {
     
     private fun openAccessibilitySettings() {
         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        startActivity(intent)
+    }
+    
+    private fun launchDebugScreen() {
+        val intent = Intent(this, DictionaryDebugActivity::class.java)
         startActivity(intent)
     }
     
