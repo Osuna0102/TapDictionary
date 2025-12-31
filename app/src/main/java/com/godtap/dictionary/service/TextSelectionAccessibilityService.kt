@@ -89,6 +89,10 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 Log.d(TAG, "Japanese text detected: $selectedText")
                 processJapaneseText(selectedText, event)
             }
+        } else {
+            // Don't auto-hide the popup when selection is cleared
+            // The popup should only be dismissed by user action or timeout
+            Log.d(TAG, "Text selection cleared, but keeping popup visible")
         }
     }
     
@@ -157,6 +161,11 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     
     private fun shouldProcessText(event: AccessibilityEvent): Boolean {
         val packageName = event.packageName?.toString() ?: return false
+        
+        // Ignore our own package to prevent loops from popup
+        if (packageName == this.packageName) {
+            return false
+        }
         
         // Ignore password fields
         if (event.isPassword) {

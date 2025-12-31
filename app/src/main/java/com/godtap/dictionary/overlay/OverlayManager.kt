@@ -26,6 +26,7 @@ class OverlayManager(private val context: Context) {
     private var autoDismissRunnable: Runnable? = null
     
     fun showPopup(word: String, translation: String) {
+        Log.d(TAG, "showPopup() called for: $word")
         handler.post {
             try {
                 // Remove existing popup if any
@@ -78,6 +79,7 @@ class OverlayManager(private val context: Context) {
     }
     
     fun hidePopup() {
+        Log.d(TAG, "hidePopup() called, stacktrace:", Exception())
         handler.post {
             try {
                 overlayView?.let {
