@@ -188,14 +188,36 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     }
     
     private fun handleViewClicked(event: AccessibilityEvent) {
-        // For future implementation: detect tap on text
+        // Don't process if from our own app
         if (event.packageName == packageName) return
         
+        // Don't process sensitive contexts
+        if (!shouldProcessText(event)) return
+        
         val text = event.text.firstOrNull()?.toString()
-        if (text != null) {
+        if (text.isNullOrBlank()) return
+        
+        serviceScope.launch {
+            val activeDictionary = dictionaryManager.getActiveDictionary()
+            if (activeDictionary == null) {
+                Log.d(TAG, "No active dictionary, ignoring click")
+                return@launch
+            }
+            
+            val sourceLang = activeDictionary.sourceLanguage
             val detectedLang = LanguageDetector.detectLanguage(text)
-            if (detectedLang != null) {
-                Log.d(TAG, "Clicked on $detectedLang text: $text")
+            
+            Log.d(TAG, "Clicked on $detectedLang text: $text")
+            
+            // Check if text matches the active dictionary's language
+            if (LanguageDetector.matchesLanguage(text, sourceLang)) {
+                Log.d(TAG, "$sourceLang text detected in click (length ${text.length}): ${text.take(50)}...")
+                
+                // For clicks, process from the beginning of the text
+                // WhatsApp often sends the clicked word/phrase directly
+                processTextFromPosition(text, 0, sourceLang)
+            } else {
+                Log.d(TAG, "Text language doesn't match active dictionary ($sourceLang)")
             }
         }
     }
@@ -372,27 +394,107 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     
     /**
      * Parse Yomichan structured content JSON to plain text
+     * Filters out example sentences and keeps only actual definitions
      */
     private fun parseYomichanGloss(gloss: String): String {
         return try {
+            // List of tags to exclude (examples, notes, metadata)
+            val excludedTags = setOf(
+                "details-entry-examples", "example-sentence", "example-sentence-a",
+                "extra-info", "backlink", "usage-note", "note", "example",
+                "details", "usage", "see-also", "related"
+            )
+            
             // Yomichan uses structured-content format with nested JSON
-            // Extract just the text content
+            // Extract just the text content, excluding examples
             if (gloss.startsWith("[") || gloss.startsWith("{")) {
-                // Try to extract "content" fields
-                val contentRegex = "\"content\":\"([^\"]+)\"".toRegex()
-                val matches = contentRegex.findAll(gloss)
-                val extracted = matches.map { it.groupValues[1] }.filter { it.isNotBlank() }.toList()
-                if (extracted.isNotEmpty()) {
-                    extracted.joinToString("; ")
+                // Extract content, but skip excluded sections
+                val parts = mutableListOf<String>()
+                
+                // Split by common delimiters and filter
+                val segments = gloss.split(Regex("[;,]"))
+                for (segment in segments) {
+                    val trimmed = segment.trim()
+                    
+                    // Skip if it matches excluded tags
+                    val isExcluded = excludedTags.any { tag -> 
+                        trimmed.contains(tag, ignoreCase = true) ||
+                        trimmed.contains("\"tag\":\"$tag\"", ignoreCase = true)
+                    }
+                    
+                    if (isExcluded) {
+                        continue
+                    }
+                    
+                    // Extract "content" fields
+                    val contentRegex = "\"content\":\"([^\"]+)\"".toRegex()
+                    val matches = contentRegex.findAll(trimmed)
+                    val extracted = matches.map { it.groupValues[1] }
+                        .filter { it.isNotBlank() && !isLikelyExample(it) }
+                        .toList()
+                    
+                    parts.addAll(extracted)
+                }
+                
+                if (parts.isNotEmpty()) {
+                    // Remove duplicates and join
+                    parts.distinct().joinToString("; ")
                 } else {
-                    gloss // Fallback to original
+                    // Fallback: try to extract any plain text definitions
+                    val plainTextRegex = "\"text\":\"([^\"]+)\"".toRegex()
+                    val plainMatches = plainTextRegex.findAll(gloss)
+                        .map { it.groupValues[1] }
+                        .filter { !isLikelyExample(it) }
+                        .toList()
+                    
+                    if (plainMatches.isNotEmpty()) {
+                        plainMatches.distinct().joinToString("; ")
+                    } else {
+                        gloss // Fallback to original
+                    }
                 }
             } else {
-                gloss // Plain text gloss
+                // Plain text gloss - filter if it looks like an example
+                if (isLikelyExample(gloss)) {
+                    "" // Return empty for examples
+                } else {
+                    gloss
+                }
             }
         } catch (e: Exception) {
             gloss // Fallback to original on error
         }
+    }
+    
+    /**
+     * Check if text looks like an example sentence rather than a definition
+     */
+    private fun isLikelyExample(text: String): Boolean {
+        if (text.isBlank()) return true
+        
+        // Too long (likely a full sentence example)
+        if (text.length > 100) return true
+        
+        // Contains source language mixed with target language (e.g., "de forma triangular 삼각형 모양으로")
+        // Spanish characters followed by Korean/Chinese characters
+        if (text.matches(Regex(".*[a-zA-Z\u00e1\u00e9\u00ed\u00f3\u00fa\u00f1\u00d1\u00bf\u00a1]+.*[\u3131-\u3163\uAC00-\uD7A3\u4E00-\u9FFF]+.*"))) {
+            return true
+        }
+        
+        // Contains example markers
+        val exampleMarkers = listOf(
+            "example:", "e.g.", "ex:", "ejemplo:", "ej.:",
+            "예:", "예문:", "용법:", "usage:"
+        )
+        val lowerText = text.lowercase()
+        if (exampleMarkers.any { lowerText.contains(it) }) {
+            return true
+        }
+        
+        // Too many words (likely a sentence, not a definition)
+        if (text.count { it == ' ' } > 8) return true
+        
+        return false
     }
     
     override fun onInterrupt() {

@@ -58,16 +58,14 @@ class JMdictParser {
         val sequence = raw.getOrNull(6)?.toString()?.toLongOrNull() ?: fallbackId
         val termTags = raw.getOrNull(7)?.toString()?.trim('"') ?: ""
         
-        // Parse glosses (can be array or string)
+        // Parse glosses (can be array, string, or structured content)
         val glosses = try {
             when {
                 glossesJson == null -> emptyList()
-                glossesJson.toString().startsWith("[") -> {
-                    json.decodeFromString<List<String>>(glossesJson.toString())
-                }
-                else -> listOf(glossesJson.toString().trim('"'))
+                else -> parseStructuredContent(glossesJson)
             }
         } catch (e: Exception) {
+            Log.w("JMdictParser", "Failed to parse glosses: ${e.message}")
             listOf(glossesJson.toString().trim('"'))
         }
         
@@ -137,6 +135,179 @@ class JMdictParser {
         )
         
         return rules.split(" ").mapNotNull { posMap[it] }
+    }
+    
+    /**
+     * Parse structured content to extract only target language definitions
+     * Filters out example sentences and source language text
+     */
+    private fun parseStructuredContent(glossesJson: kotlinx.serialization.json.JsonElement): List<String> {
+        try {
+            val jsonString = glossesJson.toString()
+            
+            // Check if it's structured content format
+            if (!jsonString.contains("structured-content")) {
+                // Regular glosses format
+                return when {
+                    jsonString.startsWith("[") -> {
+                        json.decodeFromString<List<String>>(jsonString)
+                    }
+                    else -> listOf(jsonString.trim('"'))
+                }
+            }
+            
+            // Parse as structured content
+            val definitions = mutableListOf<String>()
+            
+            // Extract content from the JSON structure
+            // Structured content has format: [{"type": "structured-content", "content": [...]}]
+            val structuredArray = json.decodeFromString<List<kotlinx.serialization.json.JsonObject>>(jsonString)
+            
+            for (structuredItem in structuredArray) {
+                val content = structuredItem["content"] as? kotlinx.serialization.json.JsonArray ?: continue
+                
+                // Navigate through the nested structure to find glosses
+                for (contentItem in content) {
+                    val contentObj = contentItem as? kotlinx.serialization.json.JsonObject ?: continue
+                    val tag = (contentObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    
+                    // Look for "ol" (ordered list) with "glosses" data
+                    if (tag == "ol") {
+                        val data = contentObj["data"] as? kotlinx.serialization.json.JsonObject
+                        val dataContent = (data?.get("content") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        
+                        if (dataContent == "glosses") {
+                            // Extract the actual definitions from list items
+                            val listContent = contentObj["content"] as? kotlinx.serialization.json.JsonArray
+                            listContent?.let { list ->
+                                extractDefinitionsFromList(list, definitions)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return definitions.filter { it.isNotBlank() }
+        } catch (e: Exception) {
+            Log.w("JMdictParser", "Failed to parse structured content: ${e.message}")
+            // Fallback: return as single string
+            return listOf(glossesJson.toString().trim('"'))
+        }
+    }
+    
+    /**
+     * Extract definitions from structured content list
+     * Now includes example sentences formatted nicely
+     */
+    private fun extractDefinitionsFromList(
+        list: kotlinx.serialization.json.JsonArray,
+        definitions: MutableList<String>
+    ) {
+        for (item in list) {
+            val itemObj = item as? kotlinx.serialization.json.JsonObject ?: continue
+            val tag = (itemObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            
+            if (tag == "li") {
+                val content = itemObj["content"] as? kotlinx.serialization.json.JsonArray ?: continue
+                
+                for (contentItem in content) {
+                    val divObj = contentItem as? kotlinx.serialization.json.JsonObject ?: continue
+                    val divContent = divObj["content"] as? kotlinx.serialization.json.JsonArray ?: continue
+                    
+                    val definitionBuilder = StringBuilder()
+                    
+                    // Extract first text element (the actual definition)
+                    for (element in divContent) {
+                        when (element) {
+                            is kotlinx.serialization.json.JsonPrimitive -> {
+                                val text = element.content
+                                // Add the main definition
+                                if (text.isNotBlank() && !isSourceLanguageExample(text)) {
+                                    definitionBuilder.append(text)
+                                }
+                            }
+                            is kotlinx.serialization.json.JsonObject -> {
+                                // Check if this is a details element with examples
+                                val detailsTag = (element["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                                if (detailsTag == "details") {
+                                    val examples = extractExamples(element)
+                                    if (examples.isNotEmpty()) {
+                                        definitionBuilder.append("\n")
+                                        examples.forEachIndexed { index, example ->
+                                            definitionBuilder.append("\n  • $example")
+                                        }
+                                    }
+                                }
+                            }
+                            else -> continue
+                        }
+                    }
+                    
+                    val fullDefinition = definitionBuilder.toString().trim()
+                    if (fullDefinition.isNotBlank()) {
+                        definitions.add(fullDefinition)
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Extract example sentences from details element
+     * Returns list of formatted examples
+     */
+    private fun extractExamples(detailsElement: kotlinx.serialization.json.JsonObject): List<String> {
+        val examples = mutableListOf<String>()
+        
+        try {
+            val detailsContent = detailsElement["content"] as? kotlinx.serialization.json.JsonArray ?: return examples
+            
+            for (item in detailsContent) {
+                val itemObj = item as? kotlinx.serialization.json.JsonObject ?: continue
+                val tag = (itemObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                
+                // Skip the summary element, look for example divs
+                if (tag == "div") {
+                    val data = itemObj["data"] as? kotlinx.serialization.json.JsonObject
+                    val dataContent = (data?.get("content") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    
+                    if (dataContent == "extra-info") {
+                        // Navigate to example-sentence
+                        val content = itemObj["content"] as? kotlinx.serialization.json.JsonObject ?: continue
+                        val exampleDiv = content["content"] as? kotlinx.serialization.json.JsonArray ?: continue
+                        
+                        for (exampleItem in exampleDiv) {
+                            val exampleObj = exampleItem as? kotlinx.serialization.json.JsonObject ?: continue
+                            val exampleData = exampleObj["data"] as? kotlinx.serialization.json.JsonObject
+                            val exampleContent = (exampleData?.get("content") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                            
+                            if (exampleContent == "example-sentence-a") {
+                                val exampleText = (exampleObj["content"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                                if (!exampleText.isNullOrBlank()) {
+                                    examples.add(exampleText)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("JMdictParser", "Failed to extract examples: ${e.message}")
+        }
+        
+        return examples
+    }
+    
+    /**
+     * Check if text appears to be a source language example rather than a target language definition
+     * For Spanish-Korean: filters out standalone Spanish text without Korean
+     * But allows mixed examples like "respirar con dificultad 어렵게 숨쉬다"
+     */
+    private fun isSourceLanguageExample(text: String): Boolean {
+        // Too long (likely a full example sentence)
+        if (text.length > 100) return true
+        
+        return false
     }
     
     /**
