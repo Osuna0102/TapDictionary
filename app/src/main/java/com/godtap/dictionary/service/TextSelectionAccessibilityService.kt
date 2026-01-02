@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -197,6 +198,12 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         val text = event.text.firstOrNull()?.toString()
         if (text.isNullOrBlank()) return
         
+        // Get the bounds of the clicked view for positioning
+        val rect = android.graphics.Rect()
+        event.source?.getBoundsInScreen(rect)
+        val x = rect.centerX()
+        val y = rect.bottom // Position below the view
+        
         serviceScope.launch {
             val activeDictionary = dictionaryManager.getActiveDictionary()
             if (activeDictionary == null) {
@@ -215,7 +222,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 
                 // For clicks, process from the beginning of the text
                 // WhatsApp often sends the clicked word/phrase directly
-                processTextFromPosition(text, 0, sourceLang)
+                processTextFromPosition(text, 0, sourceLang, x, y)
             } else {
                 Log.d(TAG, "Text language doesn't match active dictionary ($sourceLang)")
             }
@@ -285,7 +292,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
      * @param startPosition Position where user tapped
      * @param languageCode ISO 639-1 language code (ja, es, ko, etc.)
      */
-    private fun processTextFromPosition(text: String, startPosition: Int, languageCode: String) {
+    private fun processTextFromPosition(text: String, startPosition: Int, languageCode: String, x: Int = -1, y: Int = -1) {
         serviceScope.launch {
             try {
                 // Debounce: ignore rapid repeated selections within 500ms
@@ -351,14 +358,14 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                         append(glosses.joinToString("; "))
                     }
                     
-                    overlayManager.showPopup(wordDisplay, translation)
+                    overlayManager.showPopup(wordDisplay, translation, x, y)
                 } else {
                     Log.d(TAG, "⊘ No dictionary entry found from position $startPosition: '$textToLookup'")
-                    overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation))
+                    overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation), x, y)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing text", e)
-                overlayManager.showPopup(text, "Error: ${e.message}")
+                overlayManager.showPopup(text, "Error: ${e.message}", x, y)
             }
         }
     }

@@ -10,8 +10,8 @@ NC='\033[0m'
 
 echo -e "${BLUE}🚀 GodTap Dictionary - Development Mode${NC}\n"
 
-# Set Java Home
-export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+# Set Java Home (Windows path for Git Bash)
+export JAVA_HOME="/c/Program Files/Java/jdk-17"
 
 # Check device
 if ! adb devices | grep -q "device$"; then
@@ -30,7 +30,8 @@ adb shell am start -n com.godtap.dictionary/.MainActivity
 
 echo -e "\n${GREEN}✓ App launched!${NC}\n"
 
-# Start hot-reload with fswatch
+# Note: Hot-reload requires fswatch. Install with: scoop install fswatch (or equivalent)
+# If fswatch not available, comment out the following section
 echo -e "${BLUE}🔥 Starting hot-reload (fswatch)...${NC}"
 echo -e "${BLUE}👀 Watching for file changes...${NC}\n"
 

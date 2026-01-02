@@ -25,7 +25,7 @@ class OverlayManager(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var autoDismissRunnable: Runnable? = null
     
-    fun showPopup(word: String, translation: String) {
+    fun showPopup(word: String, translation: String, x: Int = -1, y: Int = -1) {
         Log.d(TAG, "showPopup() called for: $word")
         handler.post {
             try {
@@ -57,7 +57,7 @@ class OverlayManager(private val context: Context) {
                     // This prevents the click from bubbling to parent view
                 }
                 
-                // Create layout params - position BELOW selected text
+                // Create layout params - position BELOW selected text or at specified coordinates
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.MATCH_PARENT,
@@ -65,9 +65,17 @@ class OverlayManager(private val context: Context) {
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                     PixelFormat.TRANSLUCENT
                 ).apply {
-                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    x = 0
-                    y = 300 // Position below selected text (adjust as needed)
+                    if (x >= 0 && y >= 0) {
+                        // Position below the tap coordinates
+                        gravity = Gravity.TOP or Gravity.LEFT
+                        this.x = x
+                        this.y = y + 50 // 50dp below the tap
+                    } else {
+                        // Default centered position
+                        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        this.x = 0
+                        this.y = 300
+                    }
                 }
                 
                 // Add view to window
