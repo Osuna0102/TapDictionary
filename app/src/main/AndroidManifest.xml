@@ -93,6 +93,7 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.godtap.dictionary.ACTION_TOGGLE_SERVICE" />
+                <action android:name="com.godtap.dictionary.ACTION_TOGGLE_UNDERLINE" />
             </intent-filter>
         </receiver>
     </application>

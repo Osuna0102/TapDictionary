@@ -4,18 +4,18 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.*import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.*import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +58,83 @@ class MainActivity : ComponentActivity() {
     }
     
     @Composable
+    private fun PermissionCard(
+        title: String,
+        description: String,
+        isGranted: Boolean,
+        buttonText: String,
+        onButtonClick: () -> Unit
+    ) {
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = if (isGranted) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 16.dp, start = 40.dp)
+                )
+                
+                Button(
+                    onClick = onButtonClick,
+                    enabled = !isGranted,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 40.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = buttonText,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+    
+    @Composable
+    private fun MenuItem(text: String, onClick: () -> Unit) {
+        TextButton(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start
+            )
+        }
+    }
+
+    @Composable
     fun MainScreen() {
         val scope = rememberCoroutineScope()
         val downloader = remember { DictionaryDownloader(applicationContext) }
@@ -73,6 +150,7 @@ class MainActivity : ComponentActivity() {
         var downloadStage by remember { mutableStateOf("") }
         var isDownloading by remember { mutableStateOf(false) }
         var downloadError by remember { mutableStateOf<String?>(null) }
+        var sidebarOpen by remember { mutableStateOf(false) }
         
         LaunchedEffect(Unit) {
             // Check if dictionary is already imported
@@ -123,14 +201,34 @@ class MainActivity : ComponentActivity() {
             }
         }
         
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(24.dp))
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Main content
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Top bar with hamburger menu
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { sidebarOpen = true },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Menu",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
             
             // Modern Header with icon
             Surface(
@@ -435,65 +533,87 @@ class MainActivity : ComponentActivity() {
             
             Spacer(modifier = Modifier.height(32.dp))
         }
-    }
-    
-    @Composable
-    fun PermissionCard(
-        title: String,
-        description: String,
-        isGranted: Boolean,
-        buttonText: String,
-        onButtonClick: () -> Unit
-    ) {
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp)
+        
+        // Sidebar
+        if (sidebarOpen) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(280.dp)
+                    .align(Alignment.TopEnd),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 8.dp
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = if (isGranted) 
-                            MaterialTheme.colorScheme.primary 
-                        else 
-                            MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 16.dp, start = 40.dp)
-                )
-                
-                Button(
-                    onClick = onButtonClick,
-                    enabled = !isGranted,
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 40.dp),
-                    shape = RoundedCornerShape(12.dp)
+                        .fillMaxSize()
+                        .padding(24.dp)
                 ) {
+                    // Header
                     Text(
-                        text = buttonText,
-                        modifier = Modifier.padding(vertical = 4.dp)
+                        text = "Menu",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // Menu items
+                    MenuItem(
+                        text = "Manage Dictionaries",
+                        onClick = {
+                            sidebarOpen = false
+                            launchDictionaryManagement()
+                        }
+                    )
+                    
+                    MenuItem(
+                        text = "Dictionary Debug",
+                        onClick = {
+                            sidebarOpen = false
+                            launchDebugScreen()
+                        }
+                    )
+                    
+                    MenuItem(
+                        text = "Probar Diccionario",
+                        onClick = {
+                            sidebarOpen = false
+                            showTestText()
+                        }
+                    )
+                    
+                    MenuItem(
+                        text = "Test Popup",
+                        onClick = {
+                            sidebarOpen = false
+                            testPopup()
+                        }
+                    )
+                    
+                    MenuItem(
+                        text = "Toggle Word Underlining",
+                        onClick = {
+                            sidebarOpen = false
+                            toggleWordUnderlining()
+                        }
+                    )
+                    
+                    Spacer(modifier = Modifier.weight(1f))
+                    
+                    // Close button
+                    OutlinedButton(
+                        onClick = { sidebarOpen = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Close")
+                    }
                 }
             }
         }
+    }
     }
     
     private fun requestOverlayPermission() {
@@ -532,5 +652,13 @@ class MainActivity : ComponentActivity() {
         // Open a test activity with Japanese text
         val intent = Intent(this, TestActivity::class.java)
         startActivity(intent)
+    }
+    
+    private fun toggleWordUnderlining() {
+        val sharedPreferences = getSharedPreferences("dictionary_prefs", MODE_PRIVATE)
+        val current = sharedPreferences.getBoolean("underline_enabled", false)
+        sharedPreferences.edit().putBoolean("underline_enabled", !current).apply()
+        val message = if (!current) "Word underlining enabled" else "Word underlining disabled"
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 }

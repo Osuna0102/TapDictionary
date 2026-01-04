@@ -28,6 +28,8 @@ import com.godtap.dictionary.util.LanguageDetector
 import com.godtap.dictionary.manager.DictionaryManager
 import com.godtap.dictionary.api.TranslationService
 import com.godtap.dictionary.receiver.NotificationActionReceiver
+import com.godtap.dictionary.overlay.TextUnderlineRenderer
+import com.godtap.dictionary.util.TextExtractor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +43,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         private const val NOTIFICATION_ID = 1001
         private const val PREFS_NAME = "dictionary_prefs"
         private const val KEY_SERVICE_ENABLED = "service_enabled"
+        private const val KEY_UNDERLINE_ENABLED = "underline_enabled"
         
         var isRunning = false
             private set
@@ -53,17 +56,26 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         fun updateNotification(context: Context, enabled: Boolean) {
             serviceInstance?.updateNotificationState(enabled)
         }
+        
+        /**
+         * Update underline notification from external components
+         */
+        fun updateUnderlineNotification(context: Context, enabled: Boolean) {
+            serviceInstance?.updateUnderlineState(enabled)
+        }
     }
     
     private lateinit var overlayManager: OverlayManager
     private lateinit var dictionaryRepository: DictionaryRepository
     private lateinit var dictionaryManager: DictionaryManager
     private lateinit var translationService: TranslationService
+    private lateinit var underlineRenderer: TextUnderlineRenderer
     private lateinit var sharedPreferences: SharedPreferences
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var lastProcessedText: String? = null
     private var lastProcessedTime: Long = 0
     private var isServiceEnabled: Boolean = true
+    private var isUnderlineEnabled: Boolean = false
     
     override fun onCreate() {
         super.onCreate()
@@ -78,9 +90,14 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         dictionaryManager = DictionaryManager(this)
         translationService = TranslationService()
         
+        // Initialize underline renderer
+        underlineRenderer = TextUnderlineRenderer(this)
+        
         // Load preferences
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         isServiceEnabled = sharedPreferences.getBoolean(KEY_SERVICE_ENABLED, true)
+        isUnderlineEnabled = sharedPreferences.getBoolean(KEY_UNDERLINE_ENABLED, false)
+        underlineRenderer.isEnabled = isUnderlineEnabled
     }
     
     override fun onServiceConnected() {
@@ -105,12 +122,29 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {
                 handleTextSelectionChanged(event)
+                // Trigger underline rendering on text selection (debounced)
+                if (isUnderlineEnabled) {
+                    renderUnderlines(event)
+                }
             }
             AccessibilityEvent.TYPE_VIEW_CLICKED -> {
                 handleViewClicked(event)
             }
             AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> {
                 handleViewLongClicked(event)
+            }
+            AccessibilityEvent.TYPE_VIEW_SCROLLED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                // Trigger underline rendering on scroll/content change (debounced)
+                if (isUnderlineEnabled) {
+                    renderUnderlines(event)
+                }
+            }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                // Force render on screen change
+                if (isUnderlineEnabled) {
+                    forceRenderUnderlines(event)
+                }
             }
         }
     }
@@ -922,12 +956,53 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         }
     }
     
+    /**
+     * Render underlines for visible words (debounced for scrolling)
+     */
+    private fun renderUnderlines(event: AccessibilityEvent) {
+        val rootNode = rootInActiveWindow ?: event.source ?: return
+        
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val visibleWords = TextExtractor.extractVisibleWords(rootNode)
+                underlineRenderer.requestRender(visibleWords, dictionaryRepository)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error rendering underlines", e)
+            } finally {
+                if (rootNode != event.source) {
+                    rootNode.recycle()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Force render underlines immediately (for screen changes)
+     */
+    private fun forceRenderUnderlines(event: AccessibilityEvent) {
+        val rootNode = rootInActiveWindow ?: event.source ?: return
+        
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val visibleWords = TextExtractor.extractVisibleWords(rootNode)
+                underlineRenderer.forceRender(visibleWords, dictionaryRepository)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error force rendering underlines", e)
+            } finally {
+                if (rootNode != event.source) {
+                    rootNode.recycle()
+                }
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
         serviceInstance = null
         serviceScope.cancel()
         overlayManager.hidePopup()
+        underlineRenderer.destroy()
         Log.d(TAG, "Service destroyed")
     }
     
@@ -941,6 +1016,23 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         showNotification()
     }
     
+    /**
+     * Update underline state (enabled/disabled)
+     */
+    fun updateUnderlineState(enabled: Boolean) {
+        isUnderlineEnabled = enabled
+        underlineRenderer.isEnabled = enabled
+        sharedPreferences.edit().putBoolean(KEY_UNDERLINE_ENABLED, enabled).apply()
+        Log.d(TAG, "Underline state updated: ${if (enabled) "ENABLED" else "DISABLED"}")
+        
+        // Clear underlines if disabled
+        if (!enabled) {
+            underlineRenderer.clearAllUnderlines()
+        }
+        
+        showNotification()
+    }
+    
     private fun showNotification() {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -948,12 +1040,21 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             PendingIntent.FLAG_IMMUTABLE
         )
         
-        // Create toggle action
+        // Create toggle service action
         val toggleIntent = Intent(this, NotificationActionReceiver::class.java).apply {
             action = NotificationActionReceiver.ACTION_TOGGLE_SERVICE
         }
         val togglePendingIntent = PendingIntent.getBroadcast(
             this, 0, toggleIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        
+        // Create toggle underline action
+        val toggleUnderlineIntent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_TOGGLE_UNDERLINE
+        }
+        val toggleUnderlinePendingIntent = PendingIntent.getBroadcast(
+            this, 1, toggleUnderlineIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         
@@ -969,6 +1070,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             getString(R.string.notification_action_enable)
         }
         
+        val underlineText = if (isUnderlineEnabled) "Underline: ON" else "Underline: OFF"
+        
         val notification: Notification = NotificationCompat.Builder(this, DictionaryApp.NOTIFICATION_CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(statusText)
@@ -980,6 +1083,11 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 if (isServiceEnabled) R.drawable.ic_power_off else R.drawable.ic_power_on,
                 toggleText,
                 togglePendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_edit,
+                underlineText,
+                toggleUnderlinePendingIntent
             )
             .setStyle(NotificationCompat.BigTextStyle().bigText(statusText))
             .build()
