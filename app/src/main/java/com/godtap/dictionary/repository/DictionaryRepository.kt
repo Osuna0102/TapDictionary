@@ -107,9 +107,24 @@ class DictionaryRepository(private val database: AppDatabase) {
     }
     
     /**
-     * Increment lookup count for an entry
+     * Get entry for lookup purposes (underlining) without incrementing count
      */
-    suspend fun incrementLookupCount(entryId: Long) = withContext(Dispatchers.IO) {
-        database.dictionaryDao().incrementLookupCount(entryId)
+    suspend fun getEntryForLookup(term: String): DictionaryEntry? = withContext(Dispatchers.IO) {
+        // Check cache first
+        cache.get(term)?.let {
+            return@withContext it
+        }
+        
+        // Fast indexed lookup (all dictionaries)
+        val entry = database.dictionaryDao().findExact(term, null)
+        
+        if (entry != null) {
+            // Do not increment lookup count for underlining
+            // Cache it
+            entry.primaryExpression?.let { cache.put(it, entry) }
+            cache.put(entry.primaryReading, entry)
+        }
+        
+        return@withContext entry
     }
 }

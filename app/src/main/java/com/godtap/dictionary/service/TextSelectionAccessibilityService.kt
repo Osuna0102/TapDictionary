@@ -135,8 +135,9 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                // Trigger underline rendering on scroll/content change (debounced)
+                // Clear underlines immediately on scroll/content change, then debounce render
                 if (isUnderlineEnabled) {
+                    underlineRenderer.clearAllUnderlines()
                     renderUnderlines(event)
                 }
             }
@@ -960,6 +961,9 @@ class TextSelectionAccessibilityService : AccessibilityService() {
      * Render underlines for visible words (debounced for scrolling)
      */
     private fun renderUnderlines(event: AccessibilityEvent) {
+        // Don't process our own app to avoid loops
+        if (event.packageName == packageName) return
+        
         val rootNode = rootInActiveWindow ?: event.source ?: return
         
         serviceScope.launch(Dispatchers.IO) {
@@ -980,6 +984,9 @@ class TextSelectionAccessibilityService : AccessibilityService() {
      * Force render underlines immediately (for screen changes)
      */
     private fun forceRenderUnderlines(event: AccessibilityEvent) {
+        // Don't process our own app to avoid loops
+        if (event.packageName == packageName) return
+        
         val rootNode = rootInActiveWindow ?: event.source ?: return
         
         serviceScope.launch(Dispatchers.IO) {

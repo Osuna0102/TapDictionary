@@ -70,40 +70,96 @@ object TextExtractor {
     
     /**
      * Extract individual words from text and estimate their bounds.
-     * This is a simplified implementation - actual bounds depend on font metrics.
+     * Uses improved character width estimation for better alignment.
      */
     private fun extractWords(text: String, containerBounds: Rect): List<TextUnderlineRenderer.WordBounds> {
         val words = mutableListOf<TextUnderlineRenderer.WordBounds>()
         
+        // Skip multi-line or large text containers for better alignment
+        if (containerBounds.height() > 150) return words
+        
         // Split text into words (handles multiple languages)
         val tokens = tokenizeText(text)
         
-        // Estimate bounds for each word
-        // This is approximate - actual rendering would require font metrics
-        val totalLength = text.length
-        val containerWidth = containerBounds.width()
+        if (tokens.isEmpty()) return words
+        
+        // Estimate bounds for each word using improved character width calculation
+        val containerWidth = containerBounds.width().toFloat()
         val containerHeight = containerBounds.height()
         
-        var currentX = containerBounds.left
-        val avgCharWidth = if (totalLength > 0) containerWidth / totalLength else 0
+        // Calculate total estimated width of all text
+        val totalEstimatedWidth = estimateTextWidth(text)
+        
+        // If text is wider than container, scale proportionally
+        val scaleFactor = if (totalEstimatedWidth > containerWidth) containerWidth / totalEstimatedWidth else 1.0f
+        val scaledTotalWidth = totalEstimatedWidth * scaleFactor
+        
+        // Assume left-aligned, but if text is shorter, it might be centered
+        val textStartX = if (scaledTotalWidth < containerWidth) {
+            containerBounds.left + (containerWidth - scaledTotalWidth) / 2
+        } else {
+            containerBounds.left.toFloat()
+        }
+        
+        var currentX = textStartX
         
         tokens.forEach { token ->
             if (token.text.isNotBlank() && token.text.length > 1) {
-                // Estimate word bounds
-                val wordWidth = token.text.length * avgCharWidth
-                val wordBounds = Rect(
-                    currentX,
-                    containerBounds.top,
-                    (currentX + wordWidth).coerceAtMost(containerBounds.right),
-                    containerBounds.bottom
-                )
+                // Estimate word width using character-based calculation
+                val wordWidth = estimateTextWidth(token.text) * scaleFactor
                 
-                words.add(TextUnderlineRenderer.WordBounds(token.text, wordBounds))
+                // Ensure word doesn't exceed container bounds
+                val wordLeft = currentX.toInt()
+                val wordRight = (currentX + wordWidth).toInt().coerceAtMost(containerBounds.right)
+                
+                if (wordRight > wordLeft) {
+                    val wordBounds = Rect(
+                        wordLeft,
+                        containerBounds.top,
+                        wordRight,
+                        containerBounds.bottom
+                    )
+                    
+                    words.add(TextUnderlineRenderer.WordBounds(token.text, wordBounds))
+                }
+                
                 currentX += wordWidth
             }
         }
         
         return words
+    }
+    
+    /**
+     * Estimate text width based on character types (rough approximation)
+     */
+    private fun estimateTextWidth(text: String): Float {
+        if (text.isEmpty()) return 0f
+        
+        var totalWidth = 0f
+        val baseWidth = 12f // Base character width in pixels (approximate)
+        
+        text.forEach { char ->
+            totalWidth += when {
+                // Wide characters (CJK, full-width)
+                char.code in 0x3040..0x309F || // Hiragana
+                char.code in 0x30A0..0x30FF || // Katakana  
+                char.code in 0x4E00..0x9FFF || // CJK Unified Ideographs
+                char.code in 0xAC00..0xD7AF || // Hangul
+                char.code >= 0xFF00 -> 16f // Full-width characters
+                
+                // Narrow punctuation
+                char in ".,;:!?\"'" -> 4f
+                
+                // Spaces
+                char == ' ' -> 6f
+                
+                // Regular characters
+                else -> baseWidth
+            }
+        }
+        
+        return totalWidth
     }
     
     /**

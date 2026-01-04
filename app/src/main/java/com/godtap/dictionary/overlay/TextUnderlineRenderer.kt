@@ -42,7 +42,7 @@ class TextUnderlineRenderer(private val context: Context) {
         private const val TAG = "TextUnderlineRenderer"
         private const val DEBOUNCE_DELAY_MS = 500L // Reduced to 0.5 seconds for better responsiveness
         private const val MAX_UNDERLINES = 50 // Limit number of underlines to prevent performance issues
-        private const val UNDERLINE_HEIGHT = 2 // Reduced thickness for better appearance
+        private const val UNDERLINE_HEIGHT = 4 // Increased thickness for better visibility
     }
     
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -156,7 +156,7 @@ class TextUnderlineRenderer(private val context: Context) {
         try {
             // Batch query to reduce DB calls
             words.forEach { word ->
-                val entry = repository.search(word)
+                val entry = repository.getEntryForLookup(word)
                 if (entry != null) {
                     counts[word] = entry.lookupCount
                 }
@@ -179,7 +179,7 @@ class TextUnderlineRenderer(private val context: Context) {
             lookupCount < 3 -> Color.YELLOW // Familiar
             lookupCount < 5 -> Color.rgb(255, 165, 0) // Orange
             lookupCount < 10 -> Color.RED // Mastered
-            else -> null // Expert - no underline
+            else -> Color.BLACK // Expert - no underline
         }
     }
     
@@ -193,7 +193,9 @@ class TextUnderlineRenderer(private val context: Context) {
                 setBackgroundColor(color)
             }
             
-            // Position underline below the word
+            // Position underline below the word, at the baseline
+            val underlineY = bounds.bottom - UNDERLINE_HEIGHT
+            
             val params = WindowManager.LayoutParams(
                 bounds.width(),
                 UNDERLINE_HEIGHT,
@@ -205,7 +207,7 @@ class TextUnderlineRenderer(private val context: Context) {
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
                 x = bounds.left
-                y = bounds.bottom
+                y = underlineY
             }
             
             // Add to window
