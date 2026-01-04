@@ -9,13 +9,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -127,54 +130,90 @@ class MainActivity : ComponentActivity() {
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Modern Header with icon
+            Surface(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(RoundedCornerShape(20.dp)),
+                color = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "📖",
+                        fontSize = 48.sp
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
             
             // Header
             Text(
                 text = getString(R.string.welcome_title),
-                fontSize = 28.sp,
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onBackground
             )
             
             Text(
                 text = getString(R.string.welcome_subtitle),
-                fontSize = 16.sp,
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp)
             )
             
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(40.dp))
             
             // Step 0: Dictionary Download
             if (!dictionaryImported || isDownloading) {
-                Card(
+                ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
+                    colors = CardDefaults.elevatedCardColors(
                         containerColor = if (downloadError != null) 
                             MaterialTheme.colorScheme.errorContainer 
                         else 
                             MaterialTheme.colorScheme.secondaryContainer
-                    )
+                    ),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp)
+                        modifier = Modifier.padding(20.dp)
                     ) {
-                        Text(
-                            text = "Dictionary Setup",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (downloadError != null) 
+                                    Icons.Default.Settings 
+                                else 
+                                    Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = if (downloadError != null)
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                else
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "Dictionary Setup",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                         
                         if (downloadError != null) {
                             Text(
                                 text = "Download failed: $downloadError",
-                                color = MaterialTheme.colorScheme.error
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
+                            Spacer(modifier = Modifier.height(12.dp))
+                            FilledTonalButton(
                                 onClick = {
                                     downloadError = null
                                     isDownloading = true
@@ -203,19 +242,37 @@ class MainActivity : ComponentActivity() {
                                             isDownloading = false
                                         }
                                     }
-                                }
+                                },
+                                modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("Retry Download")
                             }
                         } else if (isDownloading) {
-                            Text(text = downloadStage)
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = downloadStage,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
                             LinearProgressIndicator(
                                 progress = downloadProgress,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         } else {
-                            Text(text = "✓ Dictionary ready!")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "✓ Dictionary ready!",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 }
@@ -260,69 +317,92 @@ class MainActivity : ComponentActivity() {
             
             // Setup Complete
             if (overlayPermissionGranted && accessibilityEnabled) {
-                Card(
+                ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
+                    colors = CardDefaults.elevatedCardColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                    ),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(20.dp),
+                        modifier = Modifier.padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(56.dp)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
                         Text(
                             text = getString(R.string.setup_complete_title),
-                            fontSize = 20.sp,
+                            style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         
                         Text(
                             text = getString(R.string.setup_complete_description),
-                            fontSize = 14.sp,
+                            style = MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.padding(top = 8.dp)
                         )
                         
+                        Spacer(modifier = Modifier.height(20.dp))
+                        
                         Row(
-                            modifier = Modifier.padding(top = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Button(
+                            FilledTonalButton(
                                 onClick = { testPopup() },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text("Test Popup")
                             }
                             
-                            Button(
+                            FilledTonalButton(
                                 onClick = { showTestText() },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text(getString(R.string.test_button))
                             }
                         }
                         
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        Divider(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(20.dp))
                         
                         // Info about managing dictionaries
                         Text(
                             text = "Manage your dictionaries:",
-                            fontSize = 16.sp,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth()
                         )
                         
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
                         // Manage Dictionaries button
                         Button(
                             onClick = { launchDictionaryManagement() },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 8.dp)
-                                .height(56.dp),
+                                .height(52.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             )
@@ -330,18 +410,22 @@ class MainActivity : ComponentActivity() {
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = null,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Manage Dictionaries", fontSize = 16.sp)
+                            Text(
+                                text = "Manage Dictionaries",
+                                style = MaterialTheme.typography.labelLarge
+                            )
                         }
                         
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         
                         // Debug button
                         OutlinedButton(
                             onClick = { launchDebugScreen() },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("🔍 Dictionary Debug")
                         }
@@ -361,32 +445,52 @@ class MainActivity : ComponentActivity() {
         buttonText: String,
         onButtonClick: () -> Unit
     ) {
-        Card(
+        ElevatedCard(
             modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
         ) {
             Column(
                 modifier = Modifier.padding(20.dp)
             ) {
-                Text(
-                    text = title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = if (isGranted) 
+                            MaterialTheme.colorScheme.primary 
+                        else 
+                            MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 
                 Text(
                     text = description,
-                    fontSize = 14.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)
+                    modifier = Modifier.padding(top = 12.dp, bottom = 16.dp, start = 40.dp)
                 )
                 
                 Button(
                     onClick = onButtonClick,
                     enabled = !isGranted,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 40.dp),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(buttonText)
+                    Text(
+                        text = buttonText,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
                 }
             }
         }

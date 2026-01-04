@@ -4,9 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -14,7 +13,7 @@ import kotlinx.coroutines.launch
         DictionaryMetadata::class,
         LanguagePair::class
     ], 
-    version = 4, 
+    version = 5, 
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dictionary_database"
                 )
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_4_5)
                     .build()
                 
                 // Note: Dictionary will be imported on first launch via DictionaryDownloader
@@ -43,5 +42,12 @@ abstract class AppDatabase : RoomDatabase() {
                 instance
             }
         }
+    }
+}
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add lookupCount column to dictionary_entries table
+        database.execSQL("ALTER TABLE dictionary_entries ADD COLUMN lookupCount INTEGER NOT NULL DEFAULT 0")
     }
 }

@@ -37,8 +37,14 @@ class DictionaryRepository(private val database: AppDatabase) {
         
         if (entry != null) {
             Log.d("DictionaryRepo", "✓ DB found '$term' → ${entry.primaryExpression ?: entry.primaryReading} (${entry.dictionaryId})")
-            // Cache result
-            cache.put(term, entry)
+            Log.d("DictionaryRepo", "  BEFORE increment: lookupCount = ${entry.lookupCount}")
+            // Increment lookup count
+            database.dictionaryDao().incrementLookupCount(entry.id)
+            Log.d("DictionaryRepo", "  AFTER increment: lookupCount incremented in DB for entryId=${entry.id}")
+            // Invalidate cache so next lookup gets updated count
+            cache.remove(term)
+            entry.primaryExpression?.let { cache.remove(it) }
+            Log.d("DictionaryRepo", "  Cache invalidated for '$term'")
         } else {
             Log.d("DictionaryRepo", "⊘ DB miss for: '$term'")
         }
@@ -101,9 +107,9 @@ class DictionaryRepository(private val database: AppDatabase) {
     }
     
     /**
-     * Get entry count
+     * Increment lookup count for an entry
      */
-    suspend fun getCount(): Int = withContext(Dispatchers.IO) {
-        database.dictionaryDao().getCount()
+    suspend fun incrementLookupCount(entryId: Long) = withContext(Dispatchers.IO) {
+        database.dictionaryDao().incrementLookupCount(entryId)
     }
 }

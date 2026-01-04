@@ -46,7 +46,8 @@ data class DictionaryEntry(
     // Metadata
     val frequency: Int = 0,       // Frequency score (higher = more common)
     val jlptLevel: Int? = null,   // JLPT level (5 = N5, 1 = N1)
-    val isCommon: Boolean = false // Common word flag
+    val isCommon: Boolean = false, // Common word flag
+    val lookupCount: Int = 0     // Number of times this word was looked up
 ) {
     /**
      * Get primary kanji form (first kanji element or null)

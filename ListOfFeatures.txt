@@ -1,0 +1,34 @@
+List of future features:
+
+- Drastically improve the app UI/UX to make it more user friendly, modern and appealing. Use modern design principles, keeping it simple and easy to use.
+
+- If no entry found, default to a NO KEY API call to a 3rd party translation service to get a translation of the word selected.
+- Add the app ON/OFF button to the notification bar for easier access. (not only accessibility settings).
+
+
+- The lenguage options should be parametrizable in the settings (For example, yomitan uses for spanish: 
+Recommendations
+    Setting scanning.scanResolution = "word"
+    Scan text one word at a time (as opposed to one character).
+
+    Setting translation.searchResolution = "word"
+    Lookup whole words in the dictionary.
+
+    Setting parsing.enableScanningParser = false
+    Turn off Yomitan's internal parser for languages with spaces.
+And for japanese:
+    Recommendations
+    Setting scanning.scanResolution = "character"
+    Scan text one character at a time.
+
+    Setting translation.searchResolution = "letter"
+    Lookup words by letter in the dictionary.
+
+
+
+- Add support for phrases (2-3 words) in addition to single words. (FOR LATIN-LIKE LENGUAGES, AS THEY USE WORD SEPARATED BY SPACES).
+- Add ADS support for monetization, if payed version not purchased.
+- If possible (look at accessibility settings limitation), add text-to-speech support for both source and target languages.
+- Add a "personal data" section where words looked up are stored locally for review later, with a counter if the word is repeated (looked up 2+ times)
+- If possible (look at accessibility settings limitation), add a color highlight feature for words on the screen based on the personal data. If NOT looked up ever, show RED. if already looked up 5+ then blue. 10+ green, etc.
+- Add support for multiple different apps like whatsapp, discord, etc. They should be able to be deactivated.

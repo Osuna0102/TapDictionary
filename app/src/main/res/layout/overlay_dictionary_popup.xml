@@ -1,70 +1,125 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#00000000"
+    android:background="#CC000000"
     android:clickable="true"
     android:focusable="true">
 
-<LinearLayout
-    android:id="@+id/popupCard"
-    android:layout_width="320dp"
-    android:layout_height="wrap_content"
-    android:layout_gravity="center"
-    android:layout_margin="16dp"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="@color/white"
-    android:elevation="8dp">
+    <androidx.cardview.widget.CardView
+        android:id="@+id/popupCard"
+        android:layout_width="340dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_margin="24dp"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="12dp"
+        android:clickable="true"
+        android:focusable="true">
 
-        <!-- Header with close button -->
-        <RelativeLayout
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp">
+            android:orientation="vertical"
+            android:padding="0dp"
+            android:background="@color/white">
 
-            <TextView
-                android:id="@+id/wordText"
-                android:layout_width="wrap_content"
+            <!-- Header with gradient background -->
+            <RelativeLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
-                android:layout_toStartOf="@id/closeButton"
-                android:text="食べる"
-                android:textSize="24sp"
-                android:textStyle="bold"
-                android:textColor="@color/black" />
+                android:background="#E3F2FD"
+                android:paddingStart="20dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="16dp"
+                android:paddingBottom="16dp">
+
+                <TextView
+                    android:id="@+id/wordText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_toStartOf="@id/closeButton"
+                    android:layout_centerVertical="true"
+                    android:text="食べる"
+                    android:textSize="26sp"
+                    android:textStyle="bold"
+                    android:textColor="#0061A4"
+                    android:maxLines="2"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/closeButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:text="✕"
+                    android:textSize="22sp"
+                    android:textColor="#666666"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/popup_close" />
+
+                <TextView
+                    android:id="@+id/lookupCountText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_alignParentTop="true"
+                    android:layout_marginEnd="8dp"
+                    android:layout_marginTop="4dp"
+                    android:text="1"
+                    android:textSize="12sp"
+                    android:textColor="#666666"
+                    android:background="@drawable/rounded_background"
+                    android:paddingStart="6dp"
+                    android:paddingEnd="6dp"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp" />
+            </RelativeLayout>
+
+            <!-- Translation content with better spacing -->
+            <ScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxHeight="400dp"
+                android:fillViewport="true">
+
+                <TextView
+                    android:id="@+id/translationText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="to eat"
+                    android:textSize="16sp"
+                    android:textColor="#424242"
+                    android:lineSpacingExtra="6dp"
+                    android:padding="20dp"
+                    android:textIsSelectable="false" />
+            </ScrollView>
+
+            <!-- Footer with subtle divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#E0E0E0" />
 
             <TextView
-                android:id="@+id/closeButton"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_alignParentEnd="true"
-                android:text="✕"
-                android:textSize="20sp"
-                android:textColor="@color/grey_dark"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="GodTap Dictionary"
+                android:textSize="11sp"
+                android:textColor="#999999"
                 android:gravity="center"
-                android:clickable="true"
-                android:focusable="true"
-                android:contentDescription="@string/popup_close" />
-        </RelativeLayout>
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp" />
 
-        <!-- Divider -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/grey"
-            android:layout_marginBottom="12dp" />
+        </LinearLayout>
 
-        <!-- Translation content -->
-        <TextView
-            android:id="@+id/translationText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="to eat"
-            android:textSize="16sp"
-            android:textColor="@color/grey_dark"
-            android:lineSpacingExtra="4dp" />
-
-</LinearLayout>
+    </androidx.cardview.widget.CardView>
 
 </FrameLayout>
+

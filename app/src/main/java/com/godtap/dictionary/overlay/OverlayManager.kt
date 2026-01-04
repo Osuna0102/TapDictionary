@@ -25,20 +25,21 @@ class OverlayManager(private val context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var autoDismissRunnable: Runnable? = null
     
-    fun showPopup(word: String, translation: String, x: Int = -1, y: Int = -1) {
-        Log.d(TAG, "showPopup() called for: $word")
+    fun showPopup(word: String, translation: String, lookupCount: Int = 0, x: Int = -1, y: Int = -1) {
+        Log.d(TAG, "showPopup() called for: $word (count: $lookupCount)")
         handler.post {
             try {
                 // Remove existing popup if any (synchronously to avoid race condition)
                 hidePopupInternal()
                 
-                // Inflate the popup view directly without themed context
-                val inflater = LayoutInflater.from(context)
-                val view = inflater.inflate(R.layout.overlay_dictionary_popup, null)
+                // Inflate the popup view with themed context to resolve theme attributes
+                val themedContext = ContextThemeWrapper(context, R.style.Theme_GodTapDictionary)
+                val view = LayoutInflater.from(themedContext).inflate(R.layout.overlay_dictionary_popup, null)
                 
                 // Set content
                 view.findViewById<TextView>(R.id.wordText).text = word
                 view.findViewById<TextView>(R.id.translationText).text = translation
+                view.findViewById<TextView>(R.id.lookupCountText).text = lookupCount.toString()
                 
                 // Close button
                 view.findViewById<View>(R.id.closeButton).setOnClickListener {

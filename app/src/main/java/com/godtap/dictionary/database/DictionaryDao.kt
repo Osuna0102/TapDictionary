@@ -29,6 +29,12 @@ interface DictionaryDao {
     suspend fun findExact(term: String, dictionaryIds: List<String>? = null): DictionaryEntry?
     
     /**
+     * Increment lookup count for a specific entry
+     */
+    @Query("UPDATE dictionary_entries SET lookupCount = lookupCount + 1 WHERE id = :entryId")
+    suspend fun incrementLookupCount(entryId: Long)
+    
+    /**
      * Batch search - finds first match for each term in the list
      * This is similar to Yomitan's bulk search capability
      */

@@ -3,7 +3,9 @@ package com.godtap.dictionary.service
 import android.accessibilityservice.AccessibilityService
 import android.app.Notification
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.Rect
 import android.os.Build
 import android.util.Log
@@ -14,12 +16,18 @@ import com.godtap.dictionary.DictionaryApp
 import com.godtap.dictionary.MainActivity
 import com.godtap.dictionary.R
 import com.godtap.dictionary.database.AppDatabase
+import com.godtap.dictionary.database.DictionaryEntry
+import com.godtap.dictionary.database.KanjiElement
+import com.godtap.dictionary.database.ReadingElement
+import com.godtap.dictionary.database.Sense
 import com.godtap.dictionary.lookup.DictionaryLookup
 import com.godtap.dictionary.overlay.OverlayManager
 import com.godtap.dictionary.repository.DictionaryRepository
 import com.godtap.dictionary.util.JapaneseTextDetector
 import com.godtap.dictionary.util.LanguageDetector
 import com.godtap.dictionary.manager.DictionaryManager
+import com.godtap.dictionary.api.TranslationService
+import com.godtap.dictionary.receiver.NotificationActionReceiver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,20 +39,36 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "TextSelectionService"
         private const val NOTIFICATION_ID = 1001
+        private const val PREFS_NAME = "dictionary_prefs"
+        private const val KEY_SERVICE_ENABLED = "service_enabled"
+        
         var isRunning = false
             private set
+        
+        private var serviceInstance: TextSelectionAccessibilityService? = null
+        
+        /**
+         * Update notification from external components (e.g., BroadcastReceiver)
+         */
+        fun updateNotification(context: Context, enabled: Boolean) {
+            serviceInstance?.updateNotificationState(enabled)
+        }
     }
     
     private lateinit var overlayManager: OverlayManager
     private lateinit var dictionaryRepository: DictionaryRepository
     private lateinit var dictionaryManager: DictionaryManager
+    private lateinit var translationService: TranslationService
+    private lateinit var sharedPreferences: SharedPreferences
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var lastProcessedText: String? = null
     private var lastProcessedTime: Long = 0
+    private var isServiceEnabled: Boolean = true
     
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service created")
+        serviceInstance = this
         overlayManager = OverlayManager(this)
         
         // Initialize database and repository
@@ -52,6 +76,11 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         dictionaryRepository = DictionaryRepository(database)
         // DictionaryLookup will be created per-lookup with the appropriate language
         dictionaryManager = DictionaryManager(this)
+        translationService = TranslationService()
+        
+        // Load preferences
+        sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        isServiceEnabled = sharedPreferences.getBoolean(KEY_SERVICE_ENABLED, true)
     }
     
     override fun onServiceConnected() {
@@ -63,6 +92,12 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
+        
+        // Check if service is enabled
+        if (!isServiceEnabled) {
+            Log.d(TAG, "Service is disabled, ignoring event")
+            return
+        }
         
         // Log all events for debugging
         Log.d(TAG, "Event: ${event.eventType}, Package: ${event.packageName}, Class: ${event.className}")
@@ -195,38 +230,328 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         // Don't process sensitive contexts
         if (!shouldProcessText(event)) return
         
-        val text = event.text.firstOrNull()?.toString()
-        if (text.isNullOrBlank()) return
-        
-        // Get the bounds of the clicked view for positioning
-        val rect = android.graphics.Rect()
-        event.source?.getBoundsInScreen(rect)
-        val x = rect.centerX()
-        val y = rect.bottom // Position below the view
-        
-        serviceScope.launch {
-            val activeDictionary = dictionaryManager.getActiveDictionary()
-            if (activeDictionary == null) {
-                Log.d(TAG, "No active dictionary, ignoring click")
-                return@launch
-            }
-            
-            val sourceLang = activeDictionary.sourceLanguage
-            val detectedLang = LanguageDetector.detectLanguage(text)
-            
-            Log.d(TAG, "Clicked on $detectedLang text: $text")
-            
-            // Check if text matches the active dictionary's language
-            if (LanguageDetector.matchesLanguage(text, sourceLang)) {
-                Log.d(TAG, "$sourceLang text detected in click (length ${text.length}): ${text.take(50)}...")
-                
-                // For clicks, process from the beginning of the text
-                // WhatsApp often sends the clicked word/phrase directly
-                processTextFromPosition(text, 0, sourceLang, x, y)
-            } else {
-                Log.d(TAG, "Text language doesn't match active dictionary ($sourceLang)")
-            }
+        val rootNode = event.source
+        if (rootNode == null) {
+            Log.d(TAG, "Click event has no source node")
+            return
         }
+        
+        try {
+            // Get click coordinates from the event
+            val clickRect = Rect()
+            rootNode.getBoundsInScreen(clickRect)
+            
+            Log.d(TAG, "═══════════════════════════════════════════════")
+            Log.d(TAG, "CLICK EVENT DETECTED")
+            Log.d(TAG, "Click at bounds: $clickRect (pkg: ${event.packageName})")
+            Log.d(TAG, "Root node class: ${rootNode.className}")
+            Log.d(TAG, "═══════════════════════════════════════════════")
+            
+            // Log the entire tree structure
+            logNodeTree(rootNode, clickRect, 0)
+            
+            Log.d(TAG, "═══════════════════════════════════════════════")
+            Log.d(TAG, "SEARCHING FOR BEST TEXT NODE...")
+            Log.d(TAG, "═══════════════════════════════════════════════")
+            
+            // Find the most specific child node containing text at the click location
+            val clickedTextNode = findClickedTextNode(rootNode, clickRect)
+            
+            if (clickedTextNode != null) {
+                val text = clickedTextNode.text?.toString() ?: clickedTextNode.contentDescription?.toString()
+                
+                if (!text.isNullOrBlank()) {
+                    val nodeRect = Rect()
+                    clickedTextNode.getBoundsInScreen(nodeRect)
+                    val x = nodeRect.centerX()
+                    val y = nodeRect.bottom
+                    
+                    Log.d(TAG, "✓ SELECTED TEXT NODE: '$text'")
+                    Log.d(TAG, "  Class: ${clickedTextNode.className}")
+                    Log.d(TAG, "  Bounds: $nodeRect")
+                    
+                    serviceScope.launch {
+                        val activeDictionary = dictionaryManager.getActiveDictionary()
+                        if (activeDictionary == null) {
+                            Log.d(TAG, "No active dictionary, ignoring click")
+                            return@launch
+                        }
+                        
+                        val sourceLang = activeDictionary.sourceLanguage
+                        
+                        // Check if text matches the active dictionary's language
+                        if (LanguageDetector.matchesLanguage(text, sourceLang)) {
+                            Log.d(TAG, "$sourceLang text detected in click (length ${text.length}): ${text.take(50)}...")
+                            
+                            // For single-line text nodes, process from beginning
+                            // For multi-line or long text, try to estimate click position
+                            val position = if (text.length < 50 && !text.contains('\n')) {
+                                0
+                            } else {
+                                // Estimate position based on click location within the node bounds
+                                val estimatedPos = estimateClickPosition(text, clickRect, nodeRect)
+
+                                // For long text with clicks, if estimated position is in the middle,
+                                // also try positions near the end (where "ayudarte" would be)
+                                if (text.length > 50 && estimatedPos < text.length * 0.6f) {
+                                    Log.d(TAG, "Long text detected, trying alternative positions for click")
+                                    // Try positions near the end of the text
+                                    val altPositions = listOf(
+                                        text.length - 10, // Near the end
+                                        text.length - 20, // A bit further back
+                                        estimatedPos      // Original estimate
+                                    )
+
+                                    // Find the best position that gives us a valid word
+                                    for (pos in altPositions) {
+                                        val safePos = pos.coerceIn(0, text.length - 1)
+                                        val wordAtPos = extractWordAtPosition(text, safePos, sourceLang)
+                                        if (wordAtPos != null && wordAtPos.length > 2) {
+                                            Log.d(TAG, "Found valid word '$wordAtPos' at alternative position $safePos, using it")
+                                            processTextFromPosition(text, safePos, sourceLang, x, y)
+                                            return@launch
+                                        }
+                                    }
+                                }
+
+                                estimatedPos
+                            }
+                            
+                            processTextFromPosition(text, position, sourceLang, x, y)
+                        } else {
+                            Log.d(TAG, "⊘ Text language doesn't match active dictionary ($sourceLang)")
+                            Log.d(TAG, "  Detected text: '$text'")
+                        }
+                    }
+                } else {
+                    Log.d(TAG, "⊘ Clicked node has no text content")
+                }
+                
+                if (clickedTextNode != rootNode) {
+                    clickedTextNode.recycle()
+                }
+            } else {
+                Log.d(TAG, "⊘ No text node found at click location")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling click event", e)
+        } finally {
+            rootNode.recycle()
+        }
+    }
+    
+    /**
+     * Log the entire node tree for debugging
+     */
+    private fun logNodeTree(node: AccessibilityNodeInfo?, clickRect: Rect, depth: Int) {
+        if (node == null) return
+        
+        try {
+            val indent = "  ".repeat(depth)
+            val nodeRect = Rect()
+            node.getBoundsInScreen(nodeRect)
+            
+            val text = node.text?.toString()
+            val contentDesc = node.contentDescription?.toString()
+            val className = node.className?.toString() ?: "null"
+            val childCount = node.childCount
+            
+            val containsClick = nodeRect.contains(clickRect) || Rect.intersects(nodeRect, clickRect)
+            val marker = if (containsClick) "✓" else "✗"
+            
+            val textInfo = when {
+                !text.isNullOrBlank() -> "TEXT='$text'"
+                !contentDesc.isNullOrBlank() -> "DESC='$contentDesc'"
+                else -> "NO_TEXT"
+            }
+            
+            Log.d(TAG, "$indent$marker [$depth] $className | $textInfo")
+            Log.d(TAG, "$indent    Bounds: $nodeRect | Children: $childCount | ContainsClick: $containsClick")
+            
+            // Recursively log children
+            for (i in 0 until childCount) {
+                try {
+                    node.getChild(i)?.let { child ->
+                        logNodeTree(child, clickRect, depth + 1)
+                        child.recycle()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "${indent}Error logging child $i", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in logNodeTree", e)
+        }
+    }
+    
+    /**
+     * Recursively find the most specific (deepest) child node that contains text
+     * at or near the click location. This is crucial for WhatsApp where messages
+     * are grouped in a parent container but individual message nodes exist.
+     */
+    private fun findClickedTextNode(node: AccessibilityNodeInfo?, clickRect: Rect): AccessibilityNodeInfo? {
+        if (node == null) return null
+        
+        try {
+            // Check if this node has text
+            val nodeText = node.text?.toString()
+            val nodeDesc = node.contentDescription?.toString()
+            val hasText = !nodeText.isNullOrBlank() || !nodeDesc.isNullOrBlank()
+            
+            // Get this node's bounds
+            val nodeRect = Rect()
+            node.getBoundsInScreen(nodeRect)
+            
+            // Check if click is within this node's bounds
+            val containsClick = nodeRect.contains(clickRect) || Rect.intersects(nodeRect, clickRect)
+            
+            if (!containsClick) {
+                return null
+            }
+            
+            // Try to find a more specific child node
+            var bestChild: AccessibilityNodeInfo? = null
+            var bestChildScore = Int.MIN_VALUE
+            
+            for (i in 0 until node.childCount) {
+                try {
+                    val child = node.getChild(i)
+                    if (child != null) {
+                        val childResult = findClickedTextNode(child, clickRect)
+                        if (childResult != null) {
+                            val childText = childResult.text?.toString() ?: childResult.contentDescription?.toString() ?: ""
+                            val childRect = Rect()
+                            childResult.getBoundsInScreen(childRect)
+                            
+                            // Score based on content type and size
+                            val score = calculateNodeScore(childText, childRect)
+                            
+                            Log.d(TAG, "    Candidate: '$childText' | Score: $score")
+                            
+                            // Prefer higher scores (message text over timestamps/metadata)
+                            if (score > bestChildScore) {
+                                bestChild?.recycle()
+                                bestChild = childResult
+                                bestChildScore = score
+                            } else {
+                                if (childResult != child) childResult.recycle()
+                            }
+                        }
+                        if (child != childResult) child.recycle()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error processing child node $i", e)
+                }
+            }
+            
+            // Return the best child, or this node if no better child found
+            return if (bestChild != null) {
+                bestChild
+            } else if (hasText) {
+                // Check if this node itself should be excluded
+                val thisText = nodeText ?: nodeDesc ?: ""
+                if (shouldExcludeText(thisText)) {
+                    Log.d(TAG, "    Excluding node with metadata text: '$thisText'")
+                    null
+                } else {
+                    node
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in findClickedTextNode", e)
+            return null
+        }
+    }
+    
+    /**
+     * Calculate a score for a text node to determine if it's likely message content
+     * Higher score = more likely to be the actual message
+     */
+    private fun calculateNodeScore(text: String, bounds: Rect): Int {
+        if (text.isBlank()) return Int.MIN_VALUE
+        
+        var score = 0
+        
+        // Penalize metadata patterns
+        if (shouldExcludeText(text)) {
+            score -= 10000  // Heavy penalty for timestamps/dates
+        }
+        
+        // Prefer longer text (more likely to be message content)
+        score += text.length * 10
+        
+        // Prefer larger bounds (message text is usually larger than timestamps)
+        val area = bounds.width() * bounds.height()
+        score += area / 100
+        
+        // Prefer text with actual words (not just numbers/punctuation)
+        val wordCount = text.split(Regex("\\s+")).filter { it.matches(Regex(".*[a-zA-ZáéíóúñÑ\\u3040-\\u309F\\u30A0-\\u30FF\\u4E00-\\u9FFF\\uAC00-\\uD7AF]+.*")) }.size
+        score += wordCount * 100
+        
+        return score
+    }
+    
+    /**
+     * Check if text is likely metadata (timestamp, date, etc.) that should be excluded
+     */
+    private fun shouldExcludeText(text: String): Boolean {
+        val lowerText = text.lowercase().trim()
+        
+        // Time patterns: "10:57 p. m.", "6:23 p. m.", "3:43 p. m."
+        if (lowerText.matches(Regex("\\d{1,2}:\\d{2}\\s*(a\\.|p\\.|am|pm|a\\.\\s*m\\.|p\\.\\s*m\\.).*"))) {
+            return true
+        }
+        
+        // Date patterns: "hace 2 años", "hace 3 días", "ayer", "hoy"
+        if (lowerText.matches(Regex("hace\\s+\\d+\\s+(año|años|día|días|hora|horas|minuto|minutos).*"))) {
+            return true
+        }
+        
+        if (lowerText in setOf("ayer", "hoy", "yesterday", "today", "now", "ahora")) {
+            return true
+        }
+        
+        // Short time-like patterns
+        if (lowerText.matches(Regex("\\d{1,2}:\\d{2}"))) {
+            return true
+        }
+        
+        return false
+    }
+    
+    /**
+     * Estimate the character position of a click within a text node
+     * based on relative position within the node's bounds
+     * IMPROVED: Use left edge of click rect instead of center for better accuracy
+     */
+    private fun estimateClickPosition(text: String, clickRect: Rect, nodeRect: Rect): Int {
+        // Use the left edge of the click rect (where the finger actually touched)
+        // instead of center, for more accurate character positioning
+        val clickX = clickRect.left
+
+        // Calculate relative position within the node (0.0 to 1.0)
+        val relativeX = ((clickX - nodeRect.left).toFloat() / nodeRect.width()).coerceIn(0f, 1f)
+
+        // For very long text, be more conservative with position estimation
+        val estimatedPos = if (text.length > 20) {
+            // For long text, assume click is in the latter half and search backwards from there
+            val startSearchFrom = (text.length * 0.7f).toInt().coerceAtMost(text.length - 1)
+            val forwardEstimate = (text.length * relativeX).toInt()
+
+            // Use the more conservative estimate (closer to start of word)
+            minOf(startSearchFrom, forwardEstimate)
+        } else {
+            // For short text, use direct proportional estimation
+            (text.length * relativeX).toInt()
+        }
+
+        val finalPos = estimatedPos.coerceIn(0, text.length - 1)
+
+        Log.d(TAG, "Click position estimation: clickX=$clickX, nodeRect=$nodeRect, relativeX=$relativeX, estimatedPos=$estimatedPos, finalPos=$finalPos")
+
+        return finalPos
     }
     
     private fun handleViewLongClicked(event: AccessibilityEvent) {
@@ -317,6 +642,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     text.substring(safeStartPos)
                 }
                 
+                Log.d(TAG, "EXTRACTED WORD: '$textToLookup' at position $startPosition in text: '${text.take(100)}...'")
+                
                 if (textToLookup.isNullOrEmpty()) {
                     Log.d(TAG, "⊘ No word found at position $startPosition")
                     return@launch
@@ -330,6 +657,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 
                 if (lookupResult != null) {
                     val entry = lookupResult.entry
+                    Log.d(TAG, "✓ Found dictionary entry for '$textToLookup': ${entry.primaryExpression ?: entry.primaryReading} (entryId=${entry.id})")
                     Log.d(TAG, "✓ Found match: '${lookupResult.matchedText}' (length: ${lookupResult.matchLength}) at position $startPosition")
                     
                     // Get primary kanji and reading
@@ -352,20 +680,57 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     
                     // Format the translation
                     val translation = buildString {
-                        if (partsOfSpeech.isNotEmpty()) {
+                        // Check if this is an API-translated entry
+                        val isApiTranslated = entry.senses.any { sense -> 
+                            sense.info.contains("Auto-translated via API")
+                        }
+                        
+                        if (isApiTranslated) {
+                            append("[Auto-translated]\n")
+                        } else if (partsOfSpeech.isNotEmpty()) {
                             append("[${partsOfSpeech.first()}]\n")
                         }
                         append(glosses.joinToString("; "))
                     }
                     
-                    overlayManager.showPopup(wordDisplay, translation, x, y)
+                    // Pass lookup count + 1 (since we just incremented it in the repository)
+                    Log.d(TAG, "  Displaying with lookupCount: ${entry.lookupCount + 1} (entry.lookupCount=${entry.lookupCount} + 1)")
+                    overlayManager.showPopup(wordDisplay, translation, entry.lookupCount + 1, x, y)
                 } else {
                     Log.d(TAG, "⊘ No dictionary entry found from position $startPosition: '$textToLookup'")
-                    overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation), x, y)
+                    
+                    // Fallback: Try online translation
+                    Log.d(TAG, "Attempting fallback translation via API...")
+                    val activeDictionary = dictionaryManager.getActiveDictionary()
+                    val targetLang = activeDictionary?.targetLanguage ?: "en"
+                    Log.d(TAG, "Using target language: $targetLang (from active dictionary: ${activeDictionary?.name})")
+                    val translatedText = translationService.translate(textToLookup, languageCode, targetLang)
+                    
+                    if (translatedText != null && translatedText.isNotBlank()) {
+                        Log.d(TAG, "✓ Fallback translation successful: '$textToLookup' -> '$translatedText'")
+                        
+                        // Create dictionary entry for future lookups
+                        serviceScope.launch {
+                            try {
+                                createDictionaryEntryForApiTranslation(textToLookup, translatedText, languageCode)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to create dictionary entry for '$textToLookup'", e)
+                            }
+                        }
+                        
+                        val translation = buildString {
+                            append("[Auto-translated]\n")
+                            append(translatedText)
+                        }
+                        overlayManager.showPopup(textToLookup, translation, 1, x, y)
+                    } else {
+                        Log.d(TAG, "⊘ Fallback translation failed")
+                        overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation), 0, x, y)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing text", e)
-                overlayManager.showPopup(text, "Error: ${e.message}", x, y)
+                overlayManager.showPopup(text, "Error: ${e.message}", 0, x, y)
             }
         }
     }
@@ -504,16 +869,76 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         return false
     }
     
-    override fun onInterrupt() {
-        Log.d(TAG, "Service interrupted")
+    /**
+     * Create a dictionary entry for words translated via API
+     * This allows future lookups to have counters
+     */
+    private suspend fun createDictionaryEntryForApiTranslation(word: String, translation: String, sourceLang: String) {
+        val activeDictionary = dictionaryManager.getActiveDictionary()
+        if (activeDictionary == null) {
+            Log.w(TAG, "No active dictionary, skipping entry creation for '$word'")
+            return
+        }
+        
+        // Generate unique entryId (use negative numbers for API-generated entries)
+        val entryId = System.currentTimeMillis() * -1
+        
+        // Create basic structures
+        val readingElements = listOf(
+            ReadingElement(
+                reading = word,
+                noKanji = true // API translations are typically for alphabetic languages
+            )
+        )
+        
+        val senses = listOf(
+            Sense(
+                glosses = listOf(translation),
+                partsOfSpeech = listOf("unknown"), // We don't know POS from API
+                info = listOf("Auto-translated via API")
+            )
+        )
+        
+        val entry = DictionaryEntry(
+            entryId = entryId,
+            dictionaryId = activeDictionary.dictionaryId,  // Use dictionaryId (String), not id (Long)
+            primaryExpression = null, // No kanji for API translations
+            primaryReading = word,
+            kanjiElements = emptyList(),
+            readingElements = readingElements,
+            senses = senses,
+            frequency = 0,
+            jlptLevel = null,
+            isCommon = false,
+            lookupCount = 1 // First lookup
+        )
+        
+        try {
+            // Insert the entry
+            AppDatabase.getDatabase(this).dictionaryDao().insert(entry)
+            Log.d(TAG, "✓ Created dictionary entry for API-translated word '$word' (entryId=$entryId)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to insert dictionary entry for '$word'", e)
+        }
     }
     
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        serviceInstance = null
         serviceScope.cancel()
         overlayManager.hidePopup()
         Log.d(TAG, "Service destroyed")
+    }
+    
+    /**
+     * Update notification state (enabled/disabled)
+     */
+    fun updateNotificationState(enabled: Boolean) {
+        isServiceEnabled = enabled
+        sharedPreferences.edit().putBoolean(KEY_SERVICE_ENABLED, enabled).apply()
+        Log.d(TAG, "Service state updated: ${if (enabled) "ENABLED" else "DISABLED"}")
+        showNotification()
     }
     
     private fun showNotification() {
@@ -523,15 +948,46 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             PendingIntent.FLAG_IMMUTABLE
         )
         
+        // Create toggle action
+        val toggleIntent = Intent(this, NotificationActionReceiver::class.java).apply {
+            action = NotificationActionReceiver.ACTION_TOGGLE_SERVICE
+        }
+        val togglePendingIntent = PendingIntent.getBroadcast(
+            this, 0, toggleIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        
+        val statusText = if (isServiceEnabled) {
+            getString(R.string.notification_status_enabled)
+        } else {
+            getString(R.string.notification_status_disabled)
+        }
+        
+        val toggleText = if (isServiceEnabled) {
+            getString(R.string.notification_action_disable)
+        } else {
+            getString(R.string.notification_action_enable)
+        }
+        
         val notification: Notification = NotificationCompat.Builder(this, DictionaryApp.NOTIFICATION_CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text))
+            .setContentText(statusText)
             .setSmallIcon(R.drawable.ic_dictionary)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(
+                if (isServiceEnabled) R.drawable.ic_power_off else R.drawable.ic_power_on,
+                toggleText,
+                togglePendingIntent
+            )
+            .setStyle(NotificationCompat.BigTextStyle().bigText(statusText))
             .build()
         
         startForeground(NOTIFICATION_ID, notification)
+    }
+    
+    override fun onInterrupt() {
+        Log.d(TAG, "Service interrupted")
     }
 }
