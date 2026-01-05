@@ -36,7 +36,11 @@ class OcrTextProcessor(
      * Process recognized text from OCR
      */
     fun processText(text: String, bounds: Rect, scope: CoroutineScope) {
-        Log.d(TAG, "Processing OCR text: $text")
+        Log.i(TAG, "┌────────────────────────────────────────────────────┐")
+        Log.i(TAG, "│ 📝 OCR TEXT PROCESSING")
+        Log.i(TAG, "│ Text: $text")
+        Log.i(TAG, "│ Bounds: $bounds")
+        Log.i(TAG, "└────────────────────────────────────────────────────┘")
         
         scope.launch {
             try {
@@ -51,32 +55,37 @@ class OcrTextProcessor(
                 // Detect language
                 val activeDictionary = dictionaryManager.getActiveDictionary()
                 if (activeDictionary == null) {
-                    Log.d(TAG, "No active dictionary, using API translation only")
-                    translateWithApi(cleanText, "auto", bounds) // Use auto-detection
+                    Log.i(TAG, "⚠️ No active dictionary, using API translation only")
+                    translateWithApi(cleanText, "auto", "auto", bounds, null) // No dictionary context
                     return@launch
                 }
                 
                 val sourceLang = activeDictionary.sourceLanguage
-                Log.d(TAG, "Active dictionary source: $sourceLang")
+                val targetLang = activeDictionary.targetLanguage
+                Log.i(TAG, "🌍 Active dictionary: $sourceLang → $targetLang")
                 
                 // Check if text matches source language
-                if (!LanguageDetector.matchesLanguage(cleanText, sourceLang)) {
-                    Log.d(TAG, "Text doesn't match source language, using API")
-                    translateWithApi(cleanText, sourceLang, bounds)
+                val matchesLang = LanguageDetector.matchesLanguage(cleanText, sourceLang)
+                Log.i(TAG, "🔍 Language match check: $matchesLang (text vs $sourceLang)")
+                
+                if (!matchesLang) {
+                    Log.i(TAG, "➡️ Text doesn't match source language, using API")
+                    translateWithApi(cleanText, "auto", targetLang, bounds, activeDictionary)
                     return@launch
                 }
                 
                 // Determine if single word or phrase
                 val isSingleWord = isSingleWord(cleanText)
+                Log.i(TAG, "📖 Is single word: $isSingleWord")
                 
                 if (isSingleWord) {
                     // Try dictionary first, fallback to API
-                    Log.d(TAG, "Processing as single word")
-                    processWord(cleanText, sourceLang, bounds)
+                    Log.i(TAG, "🔎 Processing as single word (dictionary + API fallback)")
+                    processWord(cleanText, sourceLang, targetLang, bounds, activeDictionary)
                 } else {
                     // Phrase - use API translation
-                    Log.d(TAG, "Processing as phrase")
-                    translateWithApi(cleanText, sourceLang, bounds)
+                    Log.i(TAG, "💬 Processing as phrase (API only)")
+                    translateWithApi(cleanText, sourceLang, targetLang, bounds, activeDictionary)
                 }
                 
             } catch (e: Exception) {
@@ -89,7 +98,13 @@ class OcrTextProcessor(
     /**
      * Process single word - try dictionary first, fallback to API
      */
-    private suspend fun processWord(word: String, sourceLang: String, bounds: Rect) {
+    private suspend fun processWord(
+        word: String,
+        sourceLang: String,
+        targetLang: String,
+        bounds: Rect,
+        dictionary: com.godtap.dictionary.database.DictionaryMetadata?
+    ) {
         try {
             // Search in dictionary
             val dictionaryLookup = DictionaryLookup(dictionaryRepository, sourceLang)
@@ -99,14 +114,15 @@ class OcrTextProcessor(
             
             if (result != null) {
                 // Found in dictionary
-                Log.d(TAG, "Found dictionary result for '$word'")
+                Log.i(TAG, "✅ Found dictionary result for '$word'")
                 val entry = result.entry
                 val translation = formatDictionaryResult(entry)
+                val languageLabel = formatLanguageLabel(sourceLang, targetLang)
                 
                 withContext(Dispatchers.Main) {
                     overlayManager.showPopup(
                         word = word,
-                        translation = translation,
+                        translation = "$languageLabel\n\n$translation",
                         lookupCount = entry.lookupCount,
                         x = bounds.centerX(),
                         y = bounds.bottom
@@ -114,46 +130,58 @@ class OcrTextProcessor(
                 }
             } else {
                 // Not found in dictionary - use API
-                Log.d(TAG, "Word not found in dictionary, using API")
-                translateWithApi(word, sourceLang, bounds)
+                Log.i(TAG, "⚠️ Word not found in dictionary, using API fallback")
+                translateWithApi(word, sourceLang, targetLang, bounds, dictionary)
             }
             
         } catch (e: Exception) {
             Log.e(TAG, "Error processing word", e)
             // Fallback to API on error
-            translateWithApi(word, sourceLang, bounds)
+            translateWithApi(word, sourceLang, targetLang, bounds, dictionary)
         }
     }
     
     /**
      * Translate text using API
      */
-    private suspend fun translateWithApi(text: String, sourceLang: String, bounds: Rect) {
+    private suspend fun translateWithApi(
+        text: String,
+        sourceLang: String,
+        targetLang: String,
+        bounds: Rect,
+        dictionary: com.godtap.dictionary.database.DictionaryMetadata?
+    ) {
         try {
-            Log.d(TAG, "Translating with API: $text")
+            Log.i(TAG, "🌐 Starting API translation...")
+            Log.i(TAG, "   Text: $text")
+            Log.i(TAG, "   $sourceLang → $targetLang")
             
             val translation = withContext(Dispatchers.IO) {
-                translationService.translate(text, sourceLang)
+                translationService.translate(text, sourceLang, targetLang)
             }
             
             if (translation != null) {
-                Log.d(TAG, "API translation: $translation")
+                Log.i(TAG, "✅ API translation SUCCESS: $translation")
+                val languageLabel = formatLanguageLabel(sourceLang, targetLang)
+                
                 withContext(Dispatchers.Main) {
+                    Log.i(TAG, "🎯 Showing popup at (${bounds.centerX()}, ${bounds.bottom})")
                     overlayManager.showPopup(
                         word = text,
-                        translation = translation,
+                        translation = "$languageLabel\n\n$translation",
                         lookupCount = 0,
                         x = bounds.centerX(),
                         y = bounds.bottom
                     )
+                    Log.i(TAG, "✔️ Popup show() called")
                 }
             } else {
-                Log.e(TAG, "API translation failed")
+                Log.e(TAG, "❌ API translation returned NULL")
                 showError("Translation failed")
             }
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error translating with API", e)
+            Log.e(TAG, "❌ Error translating with API: ${e.message}", e)
             showError("Translation error: ${e.message}")
         }
     }
@@ -171,6 +199,29 @@ class OcrTextProcessor(
             .joinToString("\n")
         
         return meanings.ifBlank { "No translation available" }
+    }
+    
+    /**
+     * Format language pair label for display
+     */
+    private fun formatLanguageLabel(sourceLang: String, targetLang: String): String {
+        val sourceLabel = when (sourceLang.lowercase()) {
+            "ja" -> "Japanese"
+            "en" -> "English"
+            "es" -> "Spanish"
+            "ko" -> "Korean"
+            "auto" -> "Auto"
+            else -> sourceLang.uppercase()
+        }
+        val targetLabel = when (targetLang.lowercase()) {
+            "ja" -> "Japanese"
+            "en" -> "English"
+            "es" -> "Spanish"
+            "ko" -> "Korean"
+            "auto" -> "Auto"
+            else -> targetLang.uppercase()
+        }
+        return "🌐 $sourceLabel → $targetLabel"
     }
     
     /**

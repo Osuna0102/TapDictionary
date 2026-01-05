@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.tasks.await
 import kotlin.math.max
 import kotlin.math.min
 
@@ -33,7 +34,8 @@ import kotlin.math.min
  */
 class OcrSelectionOverlay(
     private val context: Context,
-    private val onTextRecognized: (String, Rect) -> Unit
+    private val onTextRecognized: (String, Rect) -> Unit,
+    private val takeScreenshotCallback: ((Rect, (Bitmap?) -> Unit) -> Unit)? = null
 ) {
     
     companion object {
@@ -161,21 +163,34 @@ class OcrSelectionOverlay(
     
     /**
      * Capture screenshot of specific screen area
-     * Note: This requires MEDIA_PROJECTION permission for API 21+
-     * For now, we'll use a placeholder - proper implementation requires MediaProjection API
+     * Uses AccessibilityService's takeScreenshot() API (Android 11+)
      */
     private suspend fun captureScreenArea(rect: Rect): Bitmap? = withContext(Dispatchers.IO) {
         try {
-            // TODO: Implement proper screen capture using MediaProjection API
-            // For now, create a placeholder bitmap
-            Log.w(TAG, "Screen capture not yet implemented - using placeholder")
+            if (takeScreenshotCallback == null) {
+                Log.e(TAG, "Screenshot callback not provided")
+                return@withContext null
+            }
             
-            // In production, you would:
-            // 1. Request MEDIA_PROJECTION permission
-            // 2. Use MediaProjection to capture screen
-            // 3. Crop to selected rect
+            // Use continuation to await screenshot
+            var screenshot: Bitmap? = null
+            val latch = java.util.concurrent.CountDownLatch(1)
             
-            null
+            withContext(Dispatchers.Main) {
+                takeScreenshotCallback.invoke(rect) { bitmap ->
+                    screenshot = bitmap
+                    latch.countDown()
+                }
+            }
+            
+            // Wait for screenshot (with timeout)
+            val captured = latch.await(3, java.util.concurrent.TimeUnit.SECONDS)
+            if (!captured) {
+                Log.e(TAG, "Screenshot timeout")
+                return@withContext null
+            }
+            
+            screenshot
             
         } catch (e: Exception) {
             Log.e(TAG, "Error capturing screen", e)
@@ -190,16 +205,11 @@ class OcrSelectionOverlay(
         try {
             val image = InputImage.fromBitmap(bitmap, 0)
             
-            val result = textRecognizer.process(image)
-                .addOnSuccessListener { visionText ->
-                    Log.d(TAG, "Text recognition successful: ${visionText.text}")
-                }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "Text recognition failed", e)
-                }
-                .result
+            // Use kotlinx-coroutines-play-services await() extension
+            val visionText = textRecognizer.process(image).await()
             
-            result.text
+            Log.d(TAG, "Text recognition successful: ${visionText.text}")
+            visionText.text
             
         } catch (e: Exception) {
             Log.e(TAG, "Error recognizing text", e)

@@ -3,11 +3,13 @@ package com.godtap.dictionary.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.AccessibilityGestureEvent
+import android.accessibilityservice.AccessibilityButtonController
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
 import android.util.Log
@@ -37,7 +39,7 @@ import com.godtap.dictionary.util.TextExtractor
 import com.godtap.dictionary.ocr.OcrSelectionOverlay
 import com.godtap.dictionary.ocr.OcrTextProcessor
 import com.godtap.dictionary.gesture.GestureOverlay
-import com.godtap.dictionary.gesture.InvisibleGestureZone
+import com.godtap.dictionary.overlay.FloatingActionButton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -85,8 +87,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     private lateinit var ocrSelectionOverlay: OcrSelectionOverlay
     private lateinit var ocrTextProcessor: OcrTextProcessor
     
-    // Invisible gesture detection zone (works perfectly on MIUI!)
-    private lateinit var gestureZone: InvisibleGestureZone
+    // Floating button (hidden/minimized) - backup control method
+    private lateinit var floatingButton: FloatingActionButton
     
     // Native gesture detection via onGesture callback (requires touch exploration)
     // Using 3-finger gestures to avoid conflicts with system 2-finger gestures
@@ -127,16 +129,22 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             overlayManager = overlayManager
         )
         
-        ocrSelectionOverlay = OcrSelectionOverlay(this) { text, bounds ->
-            Log.d(TAG, "OCR recognized text: $text at $bounds")
-            ocrTextProcessor.processText(text, bounds, serviceScope)
-        }
+        ocrSelectionOverlay = OcrSelectionOverlay(
+            context = this,
+            onTextRecognized = { text, bounds ->
+                Log.d(TAG, "OCR recognized text: $text at $bounds")
+                ocrTextProcessor.processText(text, bounds, serviceScope)
+            },
+            takeScreenshotCallback = { rect, callback ->
+                takeScreenshotForOcr(rect, callback)
+            }
+        )
         
-        // Initialize invisible gesture zone (works on MIUI!)
-        gestureZone = InvisibleGestureZone(this).apply {
-            onTwoFingerSwipeRight = { activateOcrMode() }
-            onTwoFingerSwipeLeft = { toggleUnderlineState() }
-            onTwoFingerSwipeUp = { toggleServiceState() }
+        // Initialize floating button (will be hidden by default)
+        floatingButton = FloatingActionButton(this).apply {
+            onOcrClick = { activateOcrMode() }
+            onUnderlineToggle = { toggleUnderlineState() }
+            onServiceToggle = { toggleServiceState() }
         }
         
         // Load preferences
@@ -188,22 +196,40 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             Log.i(TAG, "  - Monitored Events: ${eventTypeNames.joinToString(", ")}")
         }
 
-        // Invisible gesture detection - works perfectly on MIUI!
+        // Register accessibility button callback (for navigation bar button + volume button shortcut)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            try {
+                val buttonController = accessibilityButtonController
+                val accessibilityButtonCallback = object : AccessibilityButtonController.AccessibilityButtonCallback() {
+                    override fun onClicked(controller: AccessibilityButtonController?) {
+                        onAccessibilityButtonClicked()
+                    }
+
+                    override fun onAvailabilityChanged(controller: AccessibilityButtonController?, available: Boolean) {
+                        onAccessibilityButtonAvailabilityChanged(available)
+                    }
+                }
+                buttonController?.registerAccessibilityButtonCallback(accessibilityButtonCallback)
+                Log.i(TAG, "✅ Accessibility button callback registered successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to register accessibility button callback", e)
+            }
+        }
+
+        // Accessibility shortcuts configured (volume buttons + accessibility button)
         Log.i(TAG, "╔════════════════════════════════════════════════════════╗")
-        Log.i(TAG, "║ ✅ EDGE GESTURE DETECTION ACTIVATED!                   ║")
+        Log.i(TAG, "║ ✅ ACCESSIBILITY SHORTCUTS READY!                      ║")
         Log.i(TAG, "║                                                        ║")
-        Log.i(TAG, "║   Swipe from RIGHT EDGE with 2 fingers:               ║")
-        Log.i(TAG, "║   👉 SWIPE RIGHT: Activate OCR Mode                    ║")
-        Log.i(TAG, "║   👈 SWIPE LEFT:  Toggle Underlining                   ║")
-        Log.i(TAG, "║   👆 SWIPE UP:    Toggle Service On/Off                ║")
+        Log.i(TAG, "║   Use these shortcuts to activate OCR:                ║")
+        Log.i(TAG, "║   📱 Accessibility Button (nav bar)                    ║")
+        Log.i(TAG, "║   🔊 Hold BOTH Volume Buttons (3 seconds)             ║")
         Log.i(TAG, "║                                                        ║")
-        Log.i(TAG, "║   ✨ Normal taps work everywhere else!                 ║")
-        Log.i(TAG, "║   ✨ Works perfectly on MIUI/Xiaomi devices!           ║")
+        Log.i(TAG, "║   Or use notification buttons for other actions       ║")
         Log.i(TAG, "╚════════════════════════════════════════════════════════╝")
         Log.i(TAG, "═══════════════════════════════════════════════════════")
         
-        // Activate invisible gesture zone
-        gestureZone.show()
+        // Don't show floating button by default (kept for fallback)
+        // Uncomment to show: floatingButton.show()
     }
     
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -1350,6 +1376,32 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         }
     }
     
+    /**
+     * Handle accessibility button click
+     * This is triggered when user taps the accessibility button in navigation bar
+     * OR when they hold both volume buttons for 3 seconds
+     */
+    fun onAccessibilityButtonClicked() {
+        Log.i(TAG, "╔═══════════════════════════════════════════════════════╗")
+        Log.i(TAG, "║ 🎯 ACCESSIBILITY SHORTCUT ACTIVATED!                 ║")
+        Log.i(TAG, "║    Launching OCR Mode...                             ║")
+        Log.i(TAG, "╚═══════════════════════════════════════════════════════╝")
+        
+        // Activate OCR mode when accessibility button is pressed
+        activateOcrMode()
+    }
+    
+    /**
+     * Handle availability change of accessibility button
+     */
+    fun onAccessibilityButtonAvailabilityChanged(available: Boolean) {
+        if (available) {
+            Log.i(TAG, "✅ Accessibility button is available")
+        } else {
+            Log.w(TAG, "⚠️ Accessibility button not available (might be used by another service)")
+        }
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
         Log.w(TAG, "══════════════════════════════════════════════════════")
@@ -1359,13 +1411,73 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         overlayManager.hidePopup()
         underlineRenderer.destroy()
         ocrSelectionOverlay.destroy()
-        gestureZone.hide()
+        floatingButton.hide()
         
         isRunning = false
         serviceInstance = null
     }
     
     // ============ Gesture Actions ============
+    
+    /**
+     * Take screenshot for OCR using AccessibilityService API (Android 11+)
+     */
+    private fun takeScreenshotForOcr(rect: Rect, callback: (Bitmap?) -> Unit) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) {
+            Log.e(TAG, "Screenshot API requires Android 11+")
+            callback(null)
+            return
+        }
+        
+        try {
+            Log.d(TAG, "Taking screenshot for rect: $rect")
+            
+            // Take full screenshot using AccessibilityService API
+            takeScreenshot(
+                android.view.Display.DEFAULT_DISPLAY,
+                { it.run() },  // executor
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        try {
+                            val hardwareBuffer = screenshot.hardwareBuffer
+                            val colorSpace = screenshot.colorSpace
+                            
+                            // Convert HardwareBuffer to Bitmap
+                            val fullBitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
+                                ?: throw Exception("Failed to wrap hardware buffer")
+                            
+                            // Crop to selected rect
+                            val croppedBitmap = Bitmap.createBitmap(
+                                fullBitmap,
+                                rect.left.coerceAtLeast(0),
+                                rect.top.coerceAtLeast(0),
+                                rect.width().coerceAtMost(fullBitmap.width - rect.left),
+                                rect.height().coerceAtMost(fullBitmap.height - rect.top)
+                            )
+                            
+                            hardwareBuffer.close()
+                            fullBitmap.recycle()
+                            
+                            Log.d(TAG, "Screenshot captured successfully: ${croppedBitmap.width}x${croppedBitmap.height}")
+                            callback(croppedBitmap)
+                            
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing screenshot", e)
+                            callback(null)
+                        }
+                    }
+                    
+                    override fun onFailure(errorCode: Int) {
+                        Log.e(TAG, "Screenshot failed with error code: $errorCode")
+                        callback(null)
+                    }
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error taking screenshot", e)
+            callback(null)
+        }
+    }
     
     /**
      * Activate OCR mode - show selection overlay
