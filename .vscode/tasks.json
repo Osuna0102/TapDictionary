@@ -4,7 +4,8 @@
         {
             "label": "Build Debug APK",
             "type": "shell",
-            "command": "export JAVA_HOME=$(/usr/libexec/java_home -v 17) && ./gradlew assembleDebug",
+            "command": "./gradlew",
+            "args": ["assembleDebug"],
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -82,7 +83,8 @@
         {
             "label": "Logcat - App Only",
             "type": "shell",
-            "command": "adb logcat | grep 'com.godtap.dictionary'",
+            "command": "powershell",
+            "args": ["-Command", "adb logcat | Select-String 'com.godtap.dictionary'"],
             "isBackground": true,
             "problemMatcher": [],
             "presentation": {
@@ -93,7 +95,8 @@
         {
             "label": "Logcat - TextSelectionService",
             "type": "shell",
-            "command": "adb logcat TextSelectionService:D OverlayManager:D '*:S'",
+            "command": "adb",
+            "args": ["logcat", "TextSelectionService:D", "OverlayManager:D", "*:S"],
             "isBackground": true,
             "problemMatcher": [],
             "presentation": {

@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.godtap.dictionary"
-        minSdk = 24
+        minSdk = 30  // Android 11+ for gesture detection
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -92,6 +92,9 @@ dependencies {
     
     // OkHttp for dictionary downloads
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    
+    // ML Kit Text Recognition for OCR
+    implementation("com.google.mlkit:text-recognition:16.0.0")
     
     // Testing
     testImplementation("junit:junit:4.13.2")

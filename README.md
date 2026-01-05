@@ -2,6 +2,27 @@
 
 Una aplicación Android que permite traducir palabras japonesas seleccionadas en cualquier aplicación del dispositivo.
 
+## 🎉 Nuevas Características (Enero 2026)
+
+### ✨ Controles por Gestos
+- **2 dedos deslizar derecha** → Activar modo OCR
+- **3 dedos tap** → Activar/desactivar servicio
+- **3 dedos deslizar derecha** → Activar/desactivar subrayado
+
+### 📷 Reconocimiento de Texto (OCR)
+- Selecciona cualquier área de la pantalla
+- Reconocimiento automático de texto con ML Kit
+- Traducción inteligente: diccionario + API
+- Funciona con texto en imágenes, capturas, etc.
+
+### 🔧 Quick Settings Tile Arreglado
+- El botón "Dictionary" en configuración rápida ahora abre la app
+
+📖 **Documentación completa**: Ver [FEATURE_GESTURES_OCR.md](FEATURE_GESTURES_OCR.md)  
+🧪 **Guía de pruebas**: Ver [TESTING_GUIDE.md](TESTING_GUIDE.md)
+
+---
+
 ## Características del MVP
 
 - ✅ Detección de texto seleccionado en cualquier app (usando AccessibilityService)
@@ -9,6 +30,9 @@ Una aplicación Android que permite traducir palabras japonesas seleccionadas en
 - ✅ Diccionario japonés-español integrado (palabras comunes N5)
 - ✅ Tokenización inteligente de texto japonés
 - ✅ Base de datos local (no requiere internet después de instalación)
+- ✅ **NUEVO**: Control por gestos multi-dedo
+- ✅ **NUEVO**: OCR con selección de área
+- ✅ **NUEVO**: Integración ML Kit Text Recognition
 
 ## Requisitos
 

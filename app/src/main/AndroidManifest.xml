@@ -15,6 +15,13 @@
     
     <!-- Permiso para servicio en primer plano -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    
+    <!-- Permissions for OCR feature -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    
+    <!-- For ML Kit -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:name=".DictionaryApp"
@@ -27,6 +34,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.GodTapDictionary"
         tools:targetApi="31">
+        
+        <!-- ML Kit Text Recognition Dependency -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr" />
         
         <!-- MainActivity -->
         <activity
@@ -59,6 +71,13 @@
             android:name=".ui.DictionaryManagementActivity"
             android:exported="false"
             android:label="Manage Dictionaries"
+            android:theme="@style/Theme.GodTapDictionary" />
+
+        <!-- Gesture Test Activity -->
+        <activity
+            android:name=".ui.GestureTestActivity"
+            android:exported="false"
+            android:label="Gesture Testing Sandbox"
             android:theme="@style/Theme.GodTapDictionary" />
 
         <!-- Accessibility Service -->

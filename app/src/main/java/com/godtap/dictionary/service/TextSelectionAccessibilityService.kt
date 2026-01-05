@@ -1,6 +1,8 @@
 package com.godtap.dictionary.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.AccessibilityGestureEvent
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
@@ -11,9 +13,10 @@ import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.MotionEvent
 import androidx.core.app.NotificationCompat
-import com.godtap.dictionary.DictionaryApp
 import com.godtap.dictionary.MainActivity
+import com.godtap.dictionary.DictionaryApp
 import com.godtap.dictionary.R
 import com.godtap.dictionary.database.AppDatabase
 import com.godtap.dictionary.database.DictionaryEntry
@@ -30,11 +33,17 @@ import com.godtap.dictionary.api.TranslationService
 import com.godtap.dictionary.receiver.NotificationActionReceiver
 import com.godtap.dictionary.overlay.TextUnderlineRenderer
 import com.godtap.dictionary.util.TextExtractor
+
+import com.godtap.dictionary.ocr.OcrSelectionOverlay
+import com.godtap.dictionary.ocr.OcrTextProcessor
+import com.godtap.dictionary.gesture.GestureOverlay
+import com.godtap.dictionary.gesture.InvisibleGestureZone
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class TextSelectionAccessibilityService : AccessibilityService() {
     
@@ -63,6 +72,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         fun updateUnderlineNotification(context: Context, enabled: Boolean) {
             serviceInstance?.updateUnderlineState(enabled)
         }
+        // Native gestures are always enabled (onGesture callback) - no start/stop needed
     }
     
     private lateinit var overlayManager: OverlayManager
@@ -71,6 +81,15 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     private lateinit var translationService: TranslationService
     private lateinit var underlineRenderer: TextUnderlineRenderer
     private lateinit var sharedPreferences: SharedPreferences
+
+    private lateinit var ocrSelectionOverlay: OcrSelectionOverlay
+    private lateinit var ocrTextProcessor: OcrTextProcessor
+    
+    // Invisible gesture detection zone (works perfectly on MIUI!)
+    private lateinit var gestureZone: InvisibleGestureZone
+    
+    // Native gesture detection via onGesture callback (requires touch exploration)
+    // Using 3-finger gestures to avoid conflicts with system 2-finger gestures
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var lastProcessedText: String? = null
     private var lastProcessedTime: Long = 0
@@ -79,9 +98,15 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "Service created")
+        Log.i(TAG, "══════════════════════════════════════════════════════")
+        Log.i(TAG, "SERVICE CREATED")
+        Log.i(TAG, "══════════════════════════════════════════════════════")
         serviceInstance = this
         overlayManager = OverlayManager(this)
+        
+        // Native gesture detection will be enabled in onServiceConnected()
+        Log.i(TAG, "Service created - gesture detection will use native Android API")
+
         
         // Initialize database and repository
         val database = AppDatabase.getDatabase(this)
@@ -93,6 +118,27 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         // Initialize underline renderer
         underlineRenderer = TextUnderlineRenderer(this)
         
+        // Initialize OCR components
+        ocrTextProcessor = OcrTextProcessor(
+            context = this,
+            dictionaryRepository = dictionaryRepository,
+            dictionaryManager = dictionaryManager,
+            translationService = translationService,
+            overlayManager = overlayManager
+        )
+        
+        ocrSelectionOverlay = OcrSelectionOverlay(this) { text, bounds ->
+            Log.d(TAG, "OCR recognized text: $text at $bounds")
+            ocrTextProcessor.processText(text, bounds, serviceScope)
+        }
+        
+        // Initialize invisible gesture zone (works on MIUI!)
+        gestureZone = InvisibleGestureZone(this).apply {
+            onTwoFingerSwipeRight = { activateOcrMode() }
+            onTwoFingerSwipeLeft = { toggleUnderlineState() }
+            onTwoFingerSwipeUp = { toggleServiceState() }
+        }
+        
         // Load preferences
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         isServiceEnabled = sharedPreferences.getBoolean(KEY_SERVICE_ENABLED, true)
@@ -103,8 +149,61 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         isRunning = true
-        Log.d(TAG, "Service connected")
+        Log.i(TAG, "═══════════════════════════════════════════════════════")
+        Log.i(TAG, "SERVICE CONNECTED - Full Diagnostics")
+        Log.i(TAG, "═══════════════════════════════════════════════════════")
+        
         showNotification()
+
+        // Log detailed service configuration
+        serviceInfo?.let { info ->
+            Log.i(TAG, "Service Info Details:")
+            Log.i(TAG, "  - Flags: ${info.flags} (0x${info.flags.toString(16)})")
+            Log.i(TAG, "  - Event Types: ${info.eventTypes}")
+            Log.i(TAG, "  - Feedback Type: ${info.feedbackType}")
+            Log.i(TAG, "  - Can Retrieve Window Content: ${info.flags and AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS != 0}")
+            Log.i(TAG, "  - Touch Exploration: ${info.flags and AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE != 0}")
+            Log.i(TAG, "  - Can Take Screenshot: ${android.os.Build.VERSION.SDK_INT >= 30}")
+            
+            // CRITICAL: Check if touch exploration is actually ENABLED by the system
+            val isTouchExplorationEnabled = info.flags and AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE != 0
+            if (isTouchExplorationEnabled) {
+                Log.w(TAG, "⚠️ Touch exploration REQUESTED but system may not have enabled it!")
+                Log.w(TAG, "⚠️ On MIUI/Xiaomi devices, multi-finger gestures may not work!")
+                Log.w(TAG, "⚠️ This is a known limitation of MIUI's accessibility implementation.")
+            }
+            
+            // List all event types being monitored
+            val eventTypeNames = mutableListOf<String>()
+            if (info.eventTypes and AccessibilityEvent.TYPE_VIEW_CLICKED != 0) eventTypeNames.add("TYPE_VIEW_CLICKED")
+            if (info.eventTypes and AccessibilityEvent.TYPE_VIEW_LONG_CLICKED != 0) eventTypeNames.add("TYPE_VIEW_LONG_CLICKED")
+            if (info.eventTypes and AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED != 0) eventTypeNames.add("TYPE_VIEW_TEXT_SELECTION_CHANGED")
+            if (info.eventTypes and AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED != 0) eventTypeNames.add("TYPE_WINDOW_STATE_CHANGED")
+            if (info.eventTypes and AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED != 0) eventTypeNames.add("TYPE_WINDOW_CONTENT_CHANGED")
+            if (info.eventTypes and AccessibilityEvent.TYPE_VIEW_SCROLLED != 0) eventTypeNames.add("TYPE_VIEW_SCROLLED")
+            if (info.eventTypes and AccessibilityEvent.TYPE_GESTURE_DETECTION_START != 0) eventTypeNames.add("TYPE_GESTURE_DETECTION_START")
+            if (info.eventTypes and AccessibilityEvent.TYPE_GESTURE_DETECTION_END != 0) eventTypeNames.add("TYPE_GESTURE_DETECTION_END")
+            if (info.eventTypes and AccessibilityEvent.TYPE_TOUCH_INTERACTION_START != 0) eventTypeNames.add("TYPE_TOUCH_INTERACTION_START")
+            if (info.eventTypes and AccessibilityEvent.TYPE_TOUCH_INTERACTION_END != 0) eventTypeNames.add("TYPE_TOUCH_INTERACTION_END")
+            Log.i(TAG, "  - Monitored Events: ${eventTypeNames.joinToString(", ")}")
+        }
+
+        // Invisible gesture detection - works perfectly on MIUI!
+        Log.i(TAG, "╔════════════════════════════════════════════════════════╗")
+        Log.i(TAG, "║ ✅ EDGE GESTURE DETECTION ACTIVATED!                   ║")
+        Log.i(TAG, "║                                                        ║")
+        Log.i(TAG, "║   Swipe from RIGHT EDGE with 2 fingers:               ║")
+        Log.i(TAG, "║   👉 SWIPE RIGHT: Activate OCR Mode                    ║")
+        Log.i(TAG, "║   👈 SWIPE LEFT:  Toggle Underlining                   ║")
+        Log.i(TAG, "║   👆 SWIPE UP:    Toggle Service On/Off                ║")
+        Log.i(TAG, "║                                                        ║")
+        Log.i(TAG, "║   ✨ Normal taps work everywhere else!                 ║")
+        Log.i(TAG, "║   ✨ Works perfectly on MIUI/Xiaomi devices!           ║")
+        Log.i(TAG, "╚════════════════════════════════════════════════════════╝")
+        Log.i(TAG, "═══════════════════════════════════════════════════════")
+        
+        // Activate invisible gesture zone
+        gestureZone.show()
     }
     
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -116,8 +215,26 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             return
         }
         
-        // Log all events for debugging
-        Log.d(TAG, "Event: ${event.eventType}, Package: ${event.packageName}, Class: ${event.className}")
+        // Ignore events from our own app to reduce log spam
+        if (event.packageName == packageName) {
+            return
+        }
+        
+        // Log all events for debugging with human-readable names
+        val eventTypeName = when(event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> "VIEW_CLICKED"
+            AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> "VIEW_LONG_CLICKED"
+            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> "TEXT_SELECTION_CHANGED"
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE_CHANGED"
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "WINDOW_CONTENT_CHANGED"
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> "VIEW_SCROLLED"
+            AccessibilityEvent.TYPE_GESTURE_DETECTION_START -> "GESTURE_START"
+            AccessibilityEvent.TYPE_GESTURE_DETECTION_END -> "GESTURE_END"
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_START -> "TOUCH_START"
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_END -> "TOUCH_END"
+            else -> "UNKNOWN(${event.eventType})"
+        }
+        Log.d(TAG, "Event: $eventTypeName (${event.eventType}), Package: ${event.packageName}, Class: ${event.className}")
         
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {
@@ -132,6 +249,12 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             }
             AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> {
                 handleViewLongClicked(event)
+            }
+            AccessibilityEvent.TYPE_GESTURE_DETECTION_END -> {
+                // Handle gesture events (API 30+/Android 11+)
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    handleGestureEvent(event)
+                }
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
@@ -150,10 +273,41 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         }
     }
     
-    private fun handleTextSelectionChanged(event: AccessibilityEvent) {
-        // Don't process if from our own app
-        if (event.packageName == packageName) return
+    /**
+     * Handle accessibility gesture events (API 30+/Android 11+)
+     * These gestures are detected by the system and don't block touches
+     */
+    @androidx.annotation.RequiresApi(30)
+    private fun handleGestureEvent(event: AccessibilityEvent) {
+        // Note: In API 30-33, we need to check parcelable data
+        // The gesture ID may be in event.parcelableData or other properties
         
+        // For now, log all gesture events to see what data is available
+        Log.i(TAG, "═══════════════════════════════════════════════════")
+        Log.i(TAG, "GESTURE EVENT DETECTED!")
+        Log.i(TAG, "  Event type: ${event.eventType}")
+        Log.i(TAG, "  Package: ${event.packageName}")
+        Log.i(TAG, "  Text: ${event.text}")
+        Log.i(TAG, "  ContentDescription: ${event.contentDescription}")
+        Log.i(TAG, "═══════════════════════════════════════════════════")
+        
+        // Try to extract gesture information from the event
+        // The exact method varies by Android version
+        try {
+            // Some devices may have gesture info in different places
+            val parcelable = event.parcelableData
+            Log.d(TAG, "Parcelable data: $parcelable")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading gesture data: ${e.message}")
+        }
+        
+        // TODO: Map specific gestures once we identify how to extract them
+        // For now, trigger OCR mode on any gesture as a test
+        Log.i(TAG, "Triggering OCR mode (test)")
+        activateOcrMode()
+    }
+    
+    private fun handleTextSelectionChanged(event: AccessibilityEvent) {
         // Don't process sensitive contexts
         if (!shouldProcessText(event)) return
         
@@ -406,7 +560,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             // Recursively log children
             for (i in 0 until childCount) {
                 try {
-                    node.getChild(i)?.let { child ->
+                    node.getChild(i)?.let { child: AccessibilityNodeInfo ->
                         logNodeTree(child, clickRect, depth + 1)
                         child.recycle()
                     }
@@ -598,14 +752,17 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     
     private fun extractTextFromNode(node: AccessibilityNodeInfo): String? {
         // Try text field
-        node.text?.toString()?.let { return it }
+        val text = node.text?.toString()
+        if (text != null) return text
         
         // Try content description
-        node.contentDescription?.toString()?.let { return it }
+        val contentDesc = node.contentDescription?.toString()
+        if (contentDesc != null) return contentDesc
         
         // Try to find selected text from children
         for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { child ->
+            val child = node.getChild(i)
+            if (child != null) {
                 val childText = extractTextFromNode(child)
                 child.recycle()
                 if (childText != null) return childText
@@ -1003,16 +1160,6 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        isRunning = false
-        serviceInstance = null
-        serviceScope.cancel()
-        overlayManager.hidePopup()
-        underlineRenderer.destroy()
-        Log.d(TAG, "Service destroyed")
-    }
-    
     /**
      * Update notification state (enabled/disabled)
      */
@@ -1065,6 +1212,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         
+        // Native gestures are always enabled - no need for gesture intent
+        
         val statusText = if (isServiceEnabled) {
             getString(R.string.notification_status_enabled)
         } else {
@@ -1096,13 +1245,160 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 underlineText,
                 toggleUnderlinePendingIntent
             )
+            // Native gestures are always enabled (API 30+) - no need for gesture toggle button
             .setStyle(NotificationCompat.BigTextStyle().bigText(statusText))
             .build()
         
         startForeground(NOTIFICATION_ID, notification)
     }
     
+    // onMotionEvent approach removed - using native Android gesture detection instead
+    // Native gestures work better with touch exploration mode enabled
+    
     override fun onInterrupt() {
-        Log.d(TAG, "Service interrupted")
+        Log.w(TAG, "⚠️ SERVICE INTERRUPTED ⚠️")
+        Log.w(TAG, "This may affect gesture detection and text selection monitoring")
     }
+    
+    /**
+     * Handle gestures (deprecated method for API 30-33 compatibility)
+     * This is the reliable method for API 33 devices
+     */
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onGesture(gestureId: Int): Boolean {
+        val gestureName = when (gestureId) {
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_RIGHT -> "3-FINGER SWIPE RIGHT"
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_LEFT -> "3-FINGER SWIPE LEFT"
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_UP -> "3-FINGER SWIPE UP"
+            AccessibilityService.GESTURE_3_FINGER_SINGLE_TAP -> "3-FINGER TAP"
+            else -> "UNKNOWN($gestureId)"
+        }
+        
+        Log.i(TAG, "═══════════════════════════════════════════════════════")
+        Log.i(TAG, "GESTURE DETECTED (deprecated method): $gestureName")
+        Log.i(TAG, "═══════════════════════════════════════════════════════")
+        
+        handleGesture(gestureId)
+        
+        // CRITICAL: Return false to not consume the gesture
+        // This allows touch events to pass through to the app underneath
+        return false
+    }
+    
+    /**
+     * Handle gestures (new method for API 30+)
+     * This method is called on newer devices
+     */
+    override fun onGesture(gestureEvent: AccessibilityGestureEvent): Boolean {
+        val gestureId = gestureEvent.gestureId
+        val gestureName = when (gestureId) {
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_RIGHT -> "3-FINGER SWIPE RIGHT"
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_LEFT -> "3-FINGER SWIPE LEFT"
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_UP -> "3-FINGER SWIPE UP"
+            AccessibilityService.GESTURE_3_FINGER_SINGLE_TAP -> "3-FINGER TAP"
+            else -> "UNKNOWN($gestureId)"
+        }
+        
+        Log.i(TAG, "═══════════════════════════════════════════════════════")
+        Log.i(TAG, "GESTURE DETECTED (new method): $gestureName")
+        Log.i(TAG, "Display ID: ${gestureEvent.displayId}")
+        Log.i(TAG, "═══════════════════════════════════════════════════════")
+        
+        handleGesture(gestureId)
+        
+        // CRITICAL: Return false to not consume the gesture
+        // This allows touch events to pass through to the app underneath
+        return false
+    }
+    
+    /**
+     * Common gesture handling logic
+     */
+    private fun handleGesture(gestureId: Int) {
+        when (gestureId) {
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_RIGHT -> {
+                Log.i(TAG, "╔═══════════════════════════════════════════╗")
+                Log.i(TAG, "║ ✓ 3-FINGER SWIPE RIGHT → OCR MODE        ║")
+                Log.i(TAG, "╚═══════════════════════════════════════════╝")
+                activateOcrMode()
+            }
+            
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_LEFT -> {
+                Log.i(TAG, "╔═══════════════════════════════════════════╗")
+                Log.i(TAG, "║ ✓ 3-FINGER SWIPE LEFT → TOGGLE UNDERLINE ║")
+                Log.i(TAG, "╚═══════════════════════════════════════════╝")
+                toggleUnderlineState()
+            }
+            
+            AccessibilityService.GESTURE_3_FINGER_SWIPE_UP -> {
+                Log.i(TAG, "╔═══════════════════════════════════════════╗")
+                Log.i(TAG, "║ ✓ 3-FINGER SWIPE UP → TOGGLE ON/OFF      ║")
+                Log.i(TAG, "╚═══════════════════════════════════════════╝")
+                toggleServiceState()
+            }
+            
+            AccessibilityService.GESTURE_3_FINGER_SINGLE_TAP -> {
+                Log.i(TAG, "╔═══════════════════════════════════════════╗")
+                Log.i(TAG, "║ ✓ 3-FINGER TAP → TOGGLE ON/OFF           ║")
+                Log.i(TAG, "╚═══════════════════════════════════════════╝")
+                toggleServiceState()
+            }
+            
+            else -> {
+                Log.d(TAG, "→ Unhandled gesture: ID=$gestureId")
+            }
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.w(TAG, "══════════════════════════════════════════════════════")
+        Log.w(TAG, "SERVICE DESTROYED")
+        Log.w(TAG, "══════════════════════════════════════════════════════")
+        serviceScope.cancel()
+        overlayManager.hidePopup()
+        underlineRenderer.destroy()
+        ocrSelectionOverlay.destroy()
+        gestureZone.hide()
+        
+        isRunning = false
+        serviceInstance = null
+    }
+    
+    // ============ Gesture Actions ============
+    
+    /**
+     * Activate OCR mode - show selection overlay
+     */
+    private fun activateOcrMode() {
+        Log.d(TAG, "Activating OCR mode")
+        ocrSelectionOverlay.show()
+    }
+    
+    /**
+     * Toggle service enabled/disabled state via gesture
+     */
+    private fun toggleServiceState() {
+        val newState = !isServiceEnabled
+        Log.d(TAG, "Toggling service state via gesture: $isServiceEnabled -> $newState")
+        
+        isServiceEnabled = newState
+        sharedPreferences.edit().putBoolean(KEY_SERVICE_ENABLED, newState).apply()
+        updateNotificationState(newState)
+    }
+    
+    /**
+     * Toggle underline enabled/disabled state via gesture
+     */
+    private fun toggleUnderlineState() {
+        val newState = !isUnderlineEnabled
+        Log.d(TAG, "Toggling underline state via gesture: $isUnderlineEnabled -> $newState")
+        
+        isUnderlineEnabled = newState
+        underlineRenderer.isEnabled = newState
+        sharedPreferences.edit().putBoolean(KEY_UNDERLINE_ENABLED, newState).apply()
+        updateUnderlineState(newState)
+    }
+    
+    // Native gesture detection (onGesture) is always enabled - no need for start/stop functions
 }

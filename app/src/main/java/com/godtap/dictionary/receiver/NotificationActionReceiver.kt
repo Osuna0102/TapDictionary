@@ -17,6 +17,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         private const val TAG = "NotificationAction"
         const val ACTION_TOGGLE_SERVICE = "com.godtap.dictionary.ACTION_TOGGLE_SERVICE"
         const val ACTION_TOGGLE_UNDERLINE = "com.godtap.dictionary.ACTION_TOGGLE_UNDERLINE"
+        const val ACTION_START_GESTURE_LISTENING = "com.godtap.dictionary.ACTION_START_GESTURE_LISTENING"
         private const val PREFS_NAME = "dictionary_prefs"
         private const val KEY_SERVICE_ENABLED = "service_enabled"
         private const val KEY_UNDERLINE_ENABLED = "underline_enabled"
@@ -32,6 +33,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 Log.d(TAG, "Toggle underline action received")
                 toggleUnderline(context)
             }
+            // ACTION_START_GESTURE_LISTENING removed - native gestures are always enabled
         }
     }
     
@@ -62,6 +64,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
         // Update underline state via service
         TextSelectionAccessibilityService.updateUnderlineNotification(context, newState)
     }
+    
+    // startGestureListening() removed - native gestures are always enabled
     
     private fun getPreferences(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

@@ -2,6 +2,7 @@ package com.godtap.dictionary
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -38,6 +39,14 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) {
         // Refresh UI after permission request
+    }
+    
+    private fun isXiaomiDevice(): Boolean {
+        val manufacturer = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        return manufacturer.contains("xiaomi") || brand.contains("xiaomi") || 
+               manufacturer.contains("poco") || brand.contains("poco") ||
+               manufacturer.contains("redmi") || brand.contains("redmi")
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -527,95 +536,116 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Text("🔍 Dictionary Debug")
                         }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Gesture Testing button
+                        OutlinedButton(
+                            onClick = { launchGestureTestActivity() },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Text("✋ Gesture Testing Sandbox")
+                        }
                     }
                 }
             }
             
             Spacer(modifier = Modifier.height(32.dp))
-        }
-        
-        // Sidebar
-        if (sidebarOpen) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .width(280.dp)
-                    .align(Alignment.TopEnd),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 8.dp
-            ) {
-                Column(
+            }
+            
+            // Sidebar
+            if (sidebarOpen) {
+                Surface(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp)
+                        .fillMaxHeight()
+                        .width(280.dp)
+                        .align(Alignment.TopEnd),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 8.dp
                 ) {
-                    // Header
-                    Text(
-                        text = "Menu",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    // Menu items
-                    MenuItem(
-                        text = "Manage Dictionaries",
-                        onClick = {
-                            sidebarOpen = false
-                            launchDictionaryManagement()
-                        }
-                    )
-                    
-                    MenuItem(
-                        text = "Dictionary Debug",
-                        onClick = {
-                            sidebarOpen = false
-                            launchDebugScreen()
-                        }
-                    )
-                    
-                    MenuItem(
-                        text = "Probar Diccionario",
-                        onClick = {
-                            sidebarOpen = false
-                            showTestText()
-                        }
-                    )
-                    
-                    MenuItem(
-                        text = "Test Popup",
-                        onClick = {
-                            sidebarOpen = false
-                            testPopup()
-                        }
-                    )
-                    
-                    MenuItem(
-                        text = "Toggle Word Underlining",
-                        onClick = {
-                            sidebarOpen = false
-                            toggleWordUnderlining()
-                        }
-                    )
-                    
-                    Spacer(modifier = Modifier.weight(1f))
-                    
-                    // Close button
-                    OutlinedButton(
-                        onClick = { sidebarOpen = false },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp)
                     ) {
-                        Text("Close")
+                        // Header
+                        Text(
+                            text = "Menu",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        // Menu items
+                        MenuItem(
+                            text = "Manage Dictionaries",
+                            onClick = {
+                                sidebarOpen = false
+                                launchDictionaryManagement()
+                            }
+                        )
+                        
+                        MenuItem(
+                            text = "Dictionary Debug",
+                            onClick = {
+                                sidebarOpen = false
+                                launchDebugScreen()
+                            }
+                        )
+                        
+                        MenuItem(
+                            text = "Gesture Testing Sandbox",
+                            onClick = {
+                                sidebarOpen = false
+                                launchGestureTestActivity()
+                            }
+                        )
+                        
+                        MenuItem(
+                            text = "Probar Diccionario",
+                            onClick = {
+                                sidebarOpen = false
+                                showTestText()
+                            }
+                        )
+                        
+                        MenuItem(
+                            text = "Test Popup",
+                            onClick = {
+                                sidebarOpen = false
+                                testPopup()
+                            }
+                        )
+                        
+                        MenuItem(
+                            text = "Toggle Word Underlining",
+                            onClick = {
+                                sidebarOpen = false
+                                toggleWordUnderlining()
+                            }
+                        )
+                        
+                        Spacer(modifier = Modifier.weight(1f))
+                        
+                        // Close button
+                        OutlinedButton(
+                            onClick = { sidebarOpen = false },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Close")
+                        }
                     }
                 }
             }
         }
     }
-    }
-    
     private fun requestOverlayPermission() {
         if (!Settings.canDrawOverlays(this)) {
             val intent = Intent(
@@ -638,6 +668,11 @@ class MainActivity : ComponentActivity() {
     
     private fun launchDictionaryManagement() {
         val intent = Intent(this, DictionaryManagementActivity::class.java)
+        startActivity(intent)
+    }
+    
+    private fun launchGestureTestActivity() {
+        val intent = Intent(this, com.godtap.dictionary.ui.GestureTestActivity::class.java)
         startActivity(intent)
     }
     
