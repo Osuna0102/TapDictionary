@@ -528,6 +528,17 @@ class MainActivity : ComponentActivity() {
                         
                         Spacer(modifier = Modifier.height(12.dp))
                         
+                        // App Filter Settings button
+                        OutlinedButton(
+                            onClick = { launchAppFilterSettings() },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("⚙️ App Filter Settings")
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
                         // Debug button
                         OutlinedButton(
                             onClick = { launchDebugScreen() },
@@ -673,6 +684,11 @@ class MainActivity : ComponentActivity() {
     
     private fun launchGestureTestActivity() {
         val intent = Intent(this, com.godtap.dictionary.ui.GestureTestActivity::class.java)
+        startActivity(intent)
+    }
+    
+    private fun launchAppFilterSettings() {
+        val intent = Intent(this, com.godtap.dictionary.ui.AppFilterActivity::class.java)
         startActivity(intent)
     }
     

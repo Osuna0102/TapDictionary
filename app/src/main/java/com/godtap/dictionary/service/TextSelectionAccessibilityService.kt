@@ -40,6 +40,7 @@ import com.godtap.dictionary.ocr.OcrSelectionOverlay
 import com.godtap.dictionary.ocr.OcrTextProcessor
 import com.godtap.dictionary.gesture.GestureOverlay
 import com.godtap.dictionary.overlay.FloatingActionButton
+import com.godtap.dictionary.util.AppFilterManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -83,6 +84,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     private lateinit var translationService: TranslationService
     private lateinit var underlineRenderer: TextUnderlineRenderer
     private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var appFilterManager: AppFilterManager
 
     private lateinit var ocrSelectionOverlay: OcrSelectionOverlay
     private lateinit var ocrTextProcessor: OcrTextProcessor
@@ -150,7 +152,11 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         // Load preferences
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         isServiceEnabled = sharedPreferences.getBoolean(KEY_SERVICE_ENABLED, true)
+        // Underlining is DISABLED by default - user must enable it manually
         isUnderlineEnabled = sharedPreferences.getBoolean(KEY_UNDERLINE_ENABLED, false)
+        
+        // Initialize app filter manager
+        appFilterManager = AppFilterManager(this)
         underlineRenderer.isEnabled = isUnderlineEnabled
     }
     
@@ -806,6 +812,12 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             return false
         }
         
+        // Check app filter settings
+        if (!appFilterManager.shouldProcessApp(packageName)) {
+            Log.d(TAG, "App filtered out: $packageName")
+            return false
+        }
+        
         // Ignore password fields
         if (event.isPassword) {
             Log.d(TAG, "Ignoring password field")
@@ -913,7 +925,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     
                     // Pass lookup count + 1 (since we just incremented it in the repository)
                     Log.d(TAG, "  Displaying with lookupCount: ${entry.lookupCount + 1} (entry.lookupCount=${entry.lookupCount} + 1)")
-                    overlayManager.showPopup(wordDisplay, translation, entry.lookupCount + 1, x, y)
+                    overlayManager.showPopup(wordDisplay, translation, entry.lookupCount + 1, x, y, languageCode)
                 } else {
                     Log.d(TAG, "⊘ No dictionary entry found from position $startPosition: '$textToLookup'")
                     
@@ -940,15 +952,15 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                             append("[Auto-translated]\n")
                             append(translatedText)
                         }
-                        overlayManager.showPopup(textToLookup, translation, 1, x, y)
+                        overlayManager.showPopup(textToLookup, translation, 1, x, y, languageCode)
                     } else {
                         Log.d(TAG, "⊘ Fallback translation failed")
-                        overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation), 0, x, y)
+                        overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation), 0, x, y, languageCode)
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing text", e)
-                overlayManager.showPopup(text, "Error: ${e.message}", 0, x, y)
+                overlayManager.showPopup(text, "Error: ${e.message}", 0, x, y, languageCode)
             }
         }
     }
@@ -1408,7 +1420,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         Log.w(TAG, "SERVICE DESTROYED")
         Log.w(TAG, "══════════════════════════════════════════════════════")
         serviceScope.cancel()
-        overlayManager.hidePopup()
+        overlayManager.cleanup() // Cleanup TTS and hide popup
         underlineRenderer.destroy()
         ocrSelectionOverlay.destroy()
         floatingButton.hide()

@@ -1,4 +1,0 @@
-# Words that couldn't be translated automatically
-# You can manually add Korean translations for these
-# Format: spanish_word,korean_translation
-

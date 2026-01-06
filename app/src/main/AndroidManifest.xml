@@ -16,6 +16,9 @@
     <!-- Permiso para servicio en primer plano -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     
+    <!-- Permiso para consultar todos los paquetes instalados (Android 11+) -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    
     <!-- Permissions for OCR feature -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -78,6 +81,13 @@
             android:name=".ui.GestureTestActivity"
             android:exported="false"
             android:label="Gesture Testing Sandbox"
+            android:theme="@style/Theme.GodTapDictionary" />
+
+        <!-- App Filter Activity -->
+        <activity
+            android:name=".ui.AppFilterActivity"
+            android:exported="false"
+            android:label="App Filter Settings"
             android:theme="@style/Theme.GodTapDictionary" />
 
         <!-- Accessibility Service -->

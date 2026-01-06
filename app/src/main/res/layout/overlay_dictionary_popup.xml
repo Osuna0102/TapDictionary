@@ -40,7 +40,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_alignParentStart="true"
-                    android:layout_toStartOf="@id/closeButton"
+                    android:layout_toStartOf="@id/speakerButton"
                     android:layout_centerVertical="true"
                     android:text="食べる"
                     android:textSize="26sp"
@@ -48,6 +48,22 @@
                     android:textColor="#0061A4"
                     android:maxLines="2"
                     android:ellipsize="end" />
+
+                <!-- TTS Speaker Button -->
+                <TextView
+                    android:id="@+id/speakerButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_toStartOf="@id/closeButton"
+                    android:layout_centerVertical="true"
+                    android:layout_marginEnd="4dp"
+                    android:text="🔊"
+                    android:textSize="20sp"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Pronounce word" />
 
                 <TextView
                     android:id="@+id/closeButton"

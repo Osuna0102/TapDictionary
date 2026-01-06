@@ -12,6 +12,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import com.godtap.dictionary.R
+import com.godtap.dictionary.util.TtsManager
 
 class OverlayManager(private val context: Context) {
     
@@ -24,9 +25,19 @@ class OverlayManager(private val context: Context) {
     private var overlayView: View? = null
     private val handler = Handler(Looper.getMainLooper())
     private var autoDismissRunnable: Runnable? = null
+    private val ttsManager = TtsManager(context)
     
-    fun showPopup(word: String, translation: String, lookupCount: Int = 0, x: Int = -1, y: Int = -1) {
+    // Store current word and language for TTS
+    private var currentWord: String = ""
+    private var currentLanguage: String = "ja" // Default to Japanese
+    
+    fun showPopup(word: String, translation: String, lookupCount: Int = 0, x: Int = -1, y: Int = -1, sourceLanguage: String = "ja") {
         Log.d(TAG, "showPopup() called for: $word (count: $lookupCount)")
+        
+        // Store word and language for TTS
+        currentWord = word
+        currentLanguage = sourceLanguage
+        
         handler.post {
             try {
                 // Remove existing popup if any (synchronously to avoid race condition)
@@ -40,6 +51,15 @@ class OverlayManager(private val context: Context) {
                 view.findViewById<TextView>(R.id.wordText).text = word
                 view.findViewById<TextView>(R.id.translationText).text = translation
                 view.findViewById<TextView>(R.id.lookupCountText).text = lookupCount.toString()
+                
+                // Speaker button for TTS
+                view.findViewById<View>(R.id.speakerButton)?.setOnClickListener {
+                    Log.d(TAG, "TTS button clicked for: $currentWord in $currentLanguage")
+                    val success = ttsManager.speak(currentWord, currentLanguage)
+                    if (!success) {
+                        Log.w(TAG, "TTS failed or not available")
+                    }
+                }
                 
                 // Close button
                 view.findViewById<View>(R.id.closeButton).setOnClickListener {
@@ -67,10 +87,16 @@ class OverlayManager(private val context: Context) {
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     if (x >= 0 && y >= 0) {
-                        // Position below the tap coordinates
-                        gravity = Gravity.TOP or Gravity.LEFT
-                        this.x = x
-                        this.y = y + 50 // 50dp below the tap
+                        // Position at top-right of the tap/selection coordinates
+                        gravity = Gravity.TOP or Gravity.START
+                        // Convert dp to pixels for consistent positioning
+                        val offsetDp = 8 // 8dp offset from selection
+                        val scale = context.resources.displayMetrics.density
+                        val offsetPx = (offsetDp * scale + 0.5f).toInt()
+                        
+                        // Position at top-right with small offset
+                        this.x = x + offsetPx
+                        this.y = y - offsetPx // Slightly above to avoid covering selection
                     } else {
                         // Default centered position
                         gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
@@ -108,6 +134,8 @@ class OverlayManager(private val context: Context) {
                 overlayView = null
                 Log.d(TAG, "Popup hidden")
             }
+            // Stop TTS when popup is dismissed
+            ttsManager.stop()
             cancelAutoDismiss()
         } catch (e: Exception) {
             Log.e(TAG, "Error hiding popup", e)
@@ -131,4 +159,13 @@ class OverlayManager(private val context: Context) {
     }
     
     fun isShowing(): Boolean = overlayView != null
+    
+    /**
+     * Cleanup resources
+     * Call this when the service is destroyed
+     */
+    fun cleanup() {
+        hidePopup()
+        ttsManager.shutdown()
+    }
 }
