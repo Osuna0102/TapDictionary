@@ -90,6 +90,13 @@
             android:label="App Filter Settings"
             android:theme="@style/Theme.GodTapDictionary" />
 
+        <!-- TTS Settings Activity -->
+        <activity
+            android:name=".ui.TtsSettingsActivity"
+            android:exported="false"
+            android:label="Text-to-Speech Settings"
+            android:theme="@style/Theme.GodTapDictionary" />
+
         <!-- Accessibility Service -->
         <service
             android:name=".service.TextSelectionAccessibilityService"

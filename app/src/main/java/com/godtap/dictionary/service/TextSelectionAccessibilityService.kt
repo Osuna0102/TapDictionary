@@ -881,6 +881,9 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 
                 Log.d(TAG, "Processing from position $startPosition: '$textToLookup' (full text: '$text')")
                 
+                // Show loading popup IMMEDIATELY while we search
+                overlayManager.showLoadingPopup(textToLookup, x, y, languageCode)
+                
                 // Use Yomitan-style progressive substring matching for Japanese
                 // Or word lookup for space-delimited languages
                 val lookupResult = dictionaryLookup.lookup(textToLookup)

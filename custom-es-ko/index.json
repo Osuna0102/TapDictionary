@@ -1,0 +1,15 @@
+{
+  "format": 2,
+  "revision": "2026.01.04",
+  "sequenced": true,
+  "author": "Alejandro Osuna Paris",
+  "url": "https://github.com/Osuna0102/TapDictionary",
+  "description": "Dictionary for Aram. ES-KO. Using es_CO.dict and scrape translations for each word.",
+  "attribution": "TapDictionary",
+  "sourceLanguage": "es",
+  "targetLanguage": "ko",
+  "title": "custom-es-ko",
+  "isUpdatable": true,
+  "indexUrl": "https://pub-c3d38cca4dc2403b88934c56748f5144.r2.dev/releases/latest/kty-es-ko-index.json",
+  "downloadUrl": "https://pub-c3d38cca4dc2403b88934c56748f5144.r2.dev/releases/latest/kty-es-ko.zip"
+}

@@ -34,11 +34,27 @@ class TtsManager(context: Context) {
     private var isInitialized = false
     private var currentLanguage: String? = null
     
+    // Store available voices for each language
+    private val availableVoices = mutableMapOf<String, List<android.speech.tts.Voice>>()
+    
     init {
         textToSpeech = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 isInitialized = true
                 Log.d(TAG, "TTS initialized successfully")
+                
+                // Populate available voices
+                textToSpeech?.voices?.let { voices ->
+                    LANGUAGE_LOCALES.forEach { (langCode, locale) ->
+                        val langVoices = voices.filter { voice ->
+                            voice.locale.language == locale.language
+                        }
+                        if (langVoices.isNotEmpty()) {
+                            availableVoices[langCode] = langVoices
+                            Log.d(TAG, "Found ${langVoices.size} voices for $langCode")
+                        }
+                    }
+                }
             } else {
                 Log.e(TAG, "TTS initialization failed with status: $status")
             }
@@ -142,6 +158,66 @@ class TtsManager(context: Context) {
     }
     
     /**
+     * Get available voices for a specific language
+     * @param languageCode ISO 639-1 language code
+     * @return List of voice names and their details
+     */
+    fun getAvailableVoicesForLanguage(languageCode: String): List<VoiceInfo> {
+        return availableVoices[languageCode]?.map { voice ->
+            VoiceInfo(
+                name = voice.name,
+                displayName = voice.name.split("#").lastOrNull() ?: voice.name,
+                locale = voice.locale,
+                quality = when (voice.quality) {
+                    android.speech.tts.Voice.QUALITY_VERY_HIGH -> "Very High"
+                    android.speech.tts.Voice.QUALITY_HIGH -> "High"
+                    android.speech.tts.Voice.QUALITY_NORMAL -> "Normal"
+                    android.speech.tts.Voice.QUALITY_LOW -> "Low"
+                    android.speech.tts.Voice.QUALITY_VERY_LOW -> "Very Low"
+                    else -> "Unknown"
+                },
+                latency = when (voice.latency) {
+                    android.speech.tts.Voice.LATENCY_VERY_LOW -> "Very Low"
+                    android.speech.tts.Voice.LATENCY_LOW -> "Low"
+                    android.speech.tts.Voice.LATENCY_NORMAL -> "Normal"
+                    android.speech.tts.Voice.LATENCY_HIGH -> "High"
+                    android.speech.tts.Voice.LATENCY_VERY_HIGH -> "Very High"
+                    else -> "Unknown"
+                },
+                isNetworkBased = voice.isNetworkConnectionRequired
+            )
+        } ?: emptyList()
+    }
+    
+    /**
+     * Set a specific voice by name for a language
+     * @param voiceName The name of the voice to use
+     * @return true if voice was set successfully
+     */
+    fun setVoice(voiceName: String): Boolean {
+        val tts = textToSpeech ?: return false
+        
+        val voice = tts.voices?.find { it.name == voiceName }
+        if (voice != null) {
+            val result = tts.setVoice(voice)
+            if (result == TextToSpeech.SUCCESS) {
+                Log.d(TAG, "Voice set to: ${voice.name}")
+                return true
+            }
+        }
+        
+        Log.w(TAG, "Failed to set voice: $voiceName")
+        return false
+    }
+    
+    /**
+     * Get all available TTS engines
+     */
+    fun getAvailableEngines(): List<TextToSpeech.EngineInfo> {
+        return textToSpeech?.engines ?: emptyList()
+    }
+    
+    /**
      * Shutdown TTS engine
      * Call this when the service is destroyed
      */
@@ -158,3 +234,15 @@ class TtsManager(context: Context) {
      */
     fun isReady(): Boolean = isInitialized && textToSpeech != null
 }
+
+/**
+ * Data class representing voice information
+ */
+data class VoiceInfo(
+    val name: String,
+    val displayName: String,
+    val locale: java.util.Locale,
+    val quality: String,
+    val latency: String,
+    val isNetworkBased: Boolean
+)

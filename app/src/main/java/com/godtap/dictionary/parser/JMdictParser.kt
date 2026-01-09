@@ -29,6 +29,22 @@ class JMdictParser {
      * @return List of parsed dictionary entries
      */
     fun parseYomichanTermBank(file: File): List<DictionaryEntry> {
+        Log.d("JMdictParser", "Parsing term bank: ${file.name}, size: ${file.length()} bytes")
+        
+        // For small files (< 10MB), use the fast method
+        if (file.length() < 10 * 1024 * 1024) {
+            return parseYomichanTermBankFast(file)
+        }
+        
+        // For large files, use streaming to avoid OOM
+        Log.i("JMdictParser", "Large file detected (${file.length() / (1024*1024)}MB), using streaming parser")
+        return parseYomichanTermBankStreaming(file)
+    }
+    
+    /**
+     * Fast parsing for small files - loads entire JSON into memory
+     */
+    private fun parseYomichanTermBankFast(file: File): List<DictionaryEntry> {
         val jsonString = file.readText()
         val rawEntries: List<List<kotlinx.serialization.json.JsonElement>> = json.decodeFromString(jsonString)
         
@@ -40,6 +56,102 @@ class JMdictParser {
                 null
             }
         }
+    }
+    
+    /**
+     * Streaming parser for large files - processes JSON array entry by entry
+     * to avoid loading the entire file into memory
+     */
+    private fun parseYomichanTermBankStreaming(file: File): List<DictionaryEntry> {
+        val entries = mutableListOf<DictionaryEntry>()
+        var entryIndex = 0L
+        val chunkSize = 1000 // Process 1000 entries at a time
+        
+        file.inputStream().bufferedReader().use { reader ->
+            // Skip opening bracket
+            var char = reader.read()
+            while (char != -1 && char.toChar() != '[') {
+                char = reader.read()
+            }
+            
+            if (char == -1) {
+                throw IllegalStateException("Invalid JSON: Missing opening bracket")
+            }
+            
+            var buffer = StringBuilder()
+            var depth = 0
+            var inString = false
+            var escapeNext = false
+            
+            char = reader.read()
+            while (char != -1) {
+                val c = char.toChar()
+                
+                when {
+                    escapeNext -> {
+                        buffer.append(c)
+                        escapeNext = false
+                    }
+                    c == '\\' && inString -> {
+                        buffer.append(c)
+                        escapeNext = true
+                    }
+                    c == '"' -> {
+                        buffer.append(c)
+                        inString = !inString
+                    }
+                    inString -> {
+                        buffer.append(c)
+                    }
+                    c == '[' -> {
+                        buffer.append(c)
+                        depth++
+                    }
+                    c == ']' -> {
+                        if (depth == 0) {
+                            // End of top-level array
+                            break
+                        }
+                        buffer.append(c)
+                        depth--
+                        
+                        if (depth == 0) {
+                            // End of entry
+                            try {
+                                val entryJson = buffer.toString().trim()
+                                if (entryJson.isNotEmpty()) {
+                                    val rawEntry: List<kotlinx.serialization.json.JsonElement> = 
+                                        json.decodeFromString(entryJson)
+                                    convertYomichanEntry(rawEntry, entryIndex)?.let {
+                                        entries.add(it)
+                                    }
+                                    entryIndex++
+                                    
+                                    // Log progress every chunk
+                                    if (entryIndex % chunkSize == 0L) {
+                                        Log.d("JMdictParser", "Parsed $entryIndex entries...")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w("JMdictParser", "Failed to parse entry $entryIndex: ${e.message}")
+                            }
+                            buffer.clear()
+                        }
+                    }
+                    c == ',' && depth == 0 -> {
+                        // Skip commas between entries
+                    }
+                    !c.isWhitespace() || depth > 0 -> {
+                        buffer.append(c)
+                    }
+                }
+                
+                char = reader.read()
+            }
+        }
+        
+        Log.i("JMdictParser", "Streaming parse complete: $entryIndex entries")
+        return entries
     }
     
     /**

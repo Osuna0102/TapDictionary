@@ -125,7 +125,8 @@ class OcrTextProcessor(
                         translation = "$languageLabel\n\n$translation",
                         lookupCount = entry.lookupCount,
                         x = bounds.centerX(),
-                        y = bounds.bottom
+                        y = bounds.bottom,
+                        sourceLanguage = sourceLang
                     )
                 }
             } else {
@@ -171,7 +172,8 @@ class OcrTextProcessor(
                         translation = "$languageLabel\n\n$translation",
                         lookupCount = 0,
                         x = bounds.centerX(),
-                        y = bounds.bottom
+                        y = bounds.bottom,
+                        sourceLanguage = sourceLang
                     )
                     Log.i(TAG, "✔️ Popup show() called")
                 }

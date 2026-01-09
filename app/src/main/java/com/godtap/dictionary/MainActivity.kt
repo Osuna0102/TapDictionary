@@ -539,6 +539,17 @@ class MainActivity : ComponentActivity() {
                         
                         Spacer(modifier = Modifier.height(8.dp))
                         
+                        // TTS Settings button
+                        OutlinedButton(
+                            onClick = { launchTtsSettings() },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("🔊 Text-to-Speech Settings")
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
                         // Debug button
                         OutlinedButton(
                             onClick = { launchDebugScreen() },
@@ -611,10 +622,18 @@ class MainActivity : ComponentActivity() {
                         )
                         
                         MenuItem(
-                            text = "Gesture Testing Sandbox",
+                            text = "App Filter Settings",
                             onClick = {
                                 sidebarOpen = false
-                                launchGestureTestActivity()
+                                launchAppFilterSettings()
+                            }
+                        )
+                        
+                        MenuItem(
+                            text = "Text-to-Speech Settings",
+                            onClick = {
+                                sidebarOpen = false
+                                launchTtsSettings()
                             }
                         )
                         
@@ -689,6 +708,11 @@ class MainActivity : ComponentActivity() {
     
     private fun launchAppFilterSettings() {
         val intent = Intent(this, com.godtap.dictionary.ui.AppFilterActivity::class.java)
+        startActivity(intent)
+    }
+    
+    private fun launchTtsSettings() {
+        val intent = Intent(this, com.godtap.dictionary.ui.TtsSettingsActivity::class.java)
         startActivity(intent)
     }
     
