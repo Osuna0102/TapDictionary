@@ -374,6 +374,16 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         // Don't process sensitive contexts
         if (!shouldProcessText(event)) return
         
+        // Skip EditText fields (text input boxes) - user is actively typing
+        event.source?.let { node ->
+            if (node.className == "android.widget.EditText" || node.className == "android.widget.ImageButton") {
+                Log.d(TAG, "⊘ Ignoring text selection in EditText (user is typing)")
+                node.recycle()
+                return
+            }
+            node.recycle()
+        }
+        
         // Get the FULL text from the node (not just selected portion)
         // This is critical because fromIndex/toIndex refer to positions in the full text
         val fullText = extractFullText(event)
@@ -502,6 +512,13 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         val rootNode = event.source
         if (rootNode == null) {
             Log.d(TAG, "Click event has no source node")
+            return
+        }
+        
+        // Skip EditText fields (text input boxes) - user is clicking placeholder or typing area
+        if (rootNode.className == "android.widget.EditText") {
+            Log.d(TAG, "⊘ Ignoring click on EditText (text input field)")
+            rootNode.recycle()
             return
         }
         
