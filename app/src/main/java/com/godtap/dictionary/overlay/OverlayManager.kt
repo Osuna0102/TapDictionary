@@ -43,6 +43,11 @@ class OverlayManager(private val context: Context) {
     // Track popup depth to prevent infinite recursion
     private var currentPopupDepth = 0
     
+    // Track last phrase for "Back to Phrase" navigation
+    private var lastPhraseLookup: String? = null
+    private var lastPhraseLanguage: String? = null
+    private var lastPhraseDepth: Int = 0
+    
     /**
      * Show popup immediately with loading indicator
      * This will be updated with actual content when lookup completes
@@ -178,11 +183,17 @@ class OverlayManager(private val context: Context) {
                 // Set content
                 view.findViewById<TextView>(R.id.wordText).text = word
                 view.findViewById<TextView>(R.id.translationText).text = translation
-                view.findViewById<TextView>(R.id.lookupCountText).text = lookupCount.toString()
+                val countText = when {
+                    lookupCount == 0 -> "New word"
+                    lookupCount == 1 -> "Looked up 1 time"
+                    else -> "Looked up $lookupCount times"
+                }
+                view.findViewById<TextView>(R.id.lookupCountText).text = countText
                 
                 // Show clickable sentence section if fullSentence is provided
                 val sentenceSection = view.findViewById<LinearLayout>(R.id.sentenceSection)
-                if (fullSentence != null && depth < MAX_POPUP_DEPTH - 1) {
+                if (fullSentence != null && fullSentence.isNotBlank() && depth < MAX_POPUP_DEPTH) {
+                    Log.d(TAG, "Showing sentence section with: $fullSentence (depth: $depth)")
                     sentenceSection?.visibility = View.VISIBLE
                     val sentenceContainer = view.findViewById<LinearLayout>(R.id.sentenceContainer)
                     sentenceContainer?.removeAllViews()
@@ -197,15 +208,14 @@ class OverlayManager(private val context: Context) {
                         val wordView = TextView(context).apply {
                             text = wordText
                             textSize = 16f
-                            setPadding(8, 4, 8, 4)
+                            setPadding(8, 6, 8, 6)
                             
-                            // Add underline
-                            paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
+                            // Make it look clickable but NOT like a web link
+                            // Subtle gray text that gets darker on press
+                            setTextColor(context.getColor(android.R.color.black))
+                            textSize = 17f
                             
-                            // Make it look clickable
-                            setTextColor(context.getColor(R.color.design_default_color_primary))
-                            
-                            // Add ripple effect
+                            // Add ripple effect for feedback
                             val outValue = TypedValue()
                             context.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
                             setBackgroundResource(outValue.resourceId)
@@ -239,6 +249,30 @@ class OverlayManager(private val context: Context) {
                         if (!success) {
                             Log.w(TAG, "TTS failed or not available")
                         }
+                    }
+                }
+                
+                // Add "Back to Phrase" button if we came from a phrase lookup
+                if (depth > 0 && lastPhraseLookup != null) {
+                    // Show a back button in the translation text area
+                    val translationText = view.findViewById<TextView>(R.id.translationText)
+                    val currentTranslation = translationText.text
+                    
+                    val backButton = android.widget.Button(context).apply {
+                        text = "← Back to Phrase"
+                        setOnClickListener {
+                            Log.d(TAG, "Back button clicked, returning to phrase")
+                            lastPhraseLookup?.let { phrase ->
+                                showClickableSentence(phrase, lastPhraseLanguage ?: sourceLanguage, lastPhraseDepth)
+                            }
+                        }
+                    }
+                    
+                    // Insert back button before the translation text
+                    val parent = translationText.parent as? android.view.ViewGroup
+                    parent?.let { viewGroup ->
+                        val index = viewGroup.indexOfChild(translationText)
+                        viewGroup.addView(backButton, index)
                     }
                 }
                 
@@ -371,61 +405,83 @@ class OverlayManager(private val context: Context) {
         currentPopupDepth = depth
         currentLanguage = sourceLanguage
         
+        // Store the sentence for navigation back
+        lastPhraseLookup = sentence
+        lastPhraseLanguage = sourceLanguage
+        lastPhraseDepth = depth
+        
         handler.post {
             try {
                 // Remove existing popup if any
                 hidePopupInternal()
                 
-                // Inflate the sentence popup view
+                // Use the SAME layout as normal word popup for consistency
                 val themedContext = ContextThemeWrapper(context, R.style.Theme_GodTapDictionary)
-                val view = LayoutInflater.from(themedContext).inflate(R.layout.overlay_sentence_popup, null)
+                val view = LayoutInflater.from(themedContext).inflate(R.layout.overlay_dictionary_popup, null)
                 
-                // Set header
-                view.findViewById<TextView>(R.id.headerText).text = 
-                    if (depth == 0) "Select a word" else "Select another word"
+                // Set short title
+                view.findViewById<TextView>(R.id.wordText).text = "Tap Phrase"
+                view.findViewById<TextView>(R.id.lookupCountText).visibility = View.GONE
                 
-                // Get sentence container
-                val sentenceContainer = view.findViewById<FlexboxLayout>(R.id.sentenceContainer)
-                
-                // Split sentence into words (basic tokenization)
+                // Set the sentence as main content with clickable spans
+                val translationTextView = view.findViewById<TextView>(R.id.translationText)
                 val words = tokenizeSentence(sentence, sourceLanguage)
                 
-                // Create clickable TextView for each word
-                words.forEach { word ->
-                    if (word.isBlank()) return@forEach
+                translationTextView.apply {
+                    // Create spannable text
+                    val spannableText = android.text.SpannableString(sentence)
                     
-                    val wordView = TextView(themedContext).apply {
-                        text = word
-                        textSize = 20f
-                        setPadding(8, 8, 8, 8)
-                        setTypeface(null, Typeface.NORMAL)
-                        setTextColor(0xFF0061A4.toInt())
+                    // Add click spans to tokenized words
+                    var currentIndex = 0
+                    
+                    words.forEach { word ->
+                        if (word.isBlank()) {
+                            currentIndex += word.length
+                            return@forEach
+                        }
                         
-                        // Add underline by default for popup words
-                        paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
-                        
-                        // Make clickable
-                        isClickable = true
-                        isFocusable = true
-                        
-                        // Set ripple background
-                        val outValue = TypedValue()
-                        context.theme.resolveAttribute(
-                            android.R.attr.selectableItemBackground,
-                            outValue,
-                            true
-                        )
-                        setBackgroundResource(outValue.resourceId)
-                        
-                        setOnClickListener {
-                            Log.d(TAG, "Word clicked in popup: $word, depth: $depth")
-                            // Call the service to lookup this word
-                            onWordClickCallback?.invoke(word, sourceLanguage, depth + 1)
+                        // Find word position in original sentence
+                        val start = sentence.indexOf(word, currentIndex)
+                        if (start >= 0) {
+                            val end = start + word.length
+                            
+                            // Create clickable span
+                            val clickSpan = object : android.text.style.ClickableSpan() {
+                                override fun onClick(widget: View) {
+                                    Log.d(TAG, "Word clicked in phrase: $word, depth: $depth")
+                                    onWordClickCallback?.invoke(word, sourceLanguage, depth + 1)
+                                }
+                                
+                                override fun updateDrawState(ds: android.text.TextPaint) {
+                                    // Make it bold, black, no underline
+                                    ds.color = android.graphics.Color.BLACK
+                                    ds.isUnderlineText = false
+                                    ds.isFakeBoldText = true
+                                }
+                            }
+                            
+                            spannableText.setSpan(
+                                clickSpan,
+                                start,
+                                end,
+                                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                            )
+                            
+                            currentIndex = end
                         }
                     }
                     
-                    sentenceContainer.addView(wordView)
+                    text = spannableText
+                    movementMethod = android.text.method.LinkMovementMethod.getInstance()
+                    textSize = 18f
+                    setTextColor(android.graphics.Color.BLACK)
                 }
+                
+                // Hide sentence section (we're using the main content area)
+                view.findViewById<LinearLayout>(R.id.sentenceSection)?.visibility = View.GONE
+                
+                // Hide TTS button for phrase view
+                view.findViewById<View>(R.id.speakerButton)?.visibility = View.GONE
                 
                 // Close button
                 view.findViewById<View>(R.id.closeButton).setOnClickListener {

@@ -448,11 +448,26 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             
             Log.d(TAG, "No valid indices found")
             return -1
-            
         } catch (e: Exception) {
-            Log.e(TAG, "Error determining tap position", e)
+            Log.e(TAG, "Error finding tap position", e)
             return -1
         }
+    }
+    
+    /**
+     * Check if app has unreliable tap position tracking
+     * Apps like WhatsApp always return position 0 regardless of where the user taps
+     */
+    private fun isAppWithUnreliablePositioning(packageName: String): Boolean {
+        return packageName in setOf(
+            "com.whatsapp",
+            "com.whatsapp.w4b",
+            "org.telegram.messenger",
+            "com.facebook.orca",
+            "com.instagram.android",
+            "com.snapchat.android",
+            "com.twitter.android"
+        )
     }
     
     /**
@@ -536,6 +551,17 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                         // Check if text matches the active dictionary's language
                         if (LanguageDetector.matchesLanguage(text, sourceLang)) {
                             Log.d(TAG, "$sourceLang text detected in click (length ${text.length}): ${text.take(50)}...")
+                            
+                            // Check if this app has unreliable position tracking (like WhatsApp)
+                            val hasUnreliablePositioning = isAppWithUnreliablePositioning(event.packageName.toString())
+                            
+                            if (hasUnreliablePositioning && text.length > 20) {
+                                // For apps like WhatsApp that always return position 0,
+                                // show the full clickable sentence instead of trying to guess the word
+                                Log.d(TAG, "⚠️ App has unreliable positioning (${event.packageName}), showing full clickable sentence")
+                                overlayManager.showClickableSentence(text, sourceLang, depth = 0)
+                                return@launch
+                            }
                             
                             // For single-line text nodes, process from beginning
                             // For multi-line or long text, try to estimate click position
