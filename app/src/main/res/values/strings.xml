@@ -4,41 +4,41 @@
     
     <!-- Accessibility Service -->
     <string name="accessibility_service_label">GodTap Dictionary</string>
-    <string name="accessibility_service_description">Permite mostrar traducciones de palabras japonesas al seleccionar texto en cualquier aplicación.\n\nEsta aplicación no recopila ni envía ningún dato personal.</string>
+    <string name="accessibility_service_description">Allows displaying translations of Japanese words when selecting text in any application.\n\nThis app does not collect or send any personal data.</string>
     
     <!-- Tile Service -->
     <string name="tile_service_label">Dictionary</string>
     
     <!-- MainActivity -->
-    <string name="welcome_title">Bienvenido a GodTap Dictionary</string>
-    <string name="welcome_subtitle">Traduce palabras japonesas en cualquier app</string>
-    <string name="permission_overlay_title">Paso 1: Permiso de Overlay</string>
-    <string name="permission_overlay_description">Necesitamos permiso para mostrar el diccionario sobre otras apps</string>
-    <string name="permission_overlay_button">Otorgar Permiso</string>
-    <string name="permission_overlay_granted">✓ Permiso otorgado</string>
-    <string name="permission_accessibility_title">Paso 2: Servicio de Accesibilidad</string>
-    <string name="permission_accessibility_description">Activa el servicio para detectar texto seleccionado</string>
-    <string name="permission_accessibility_button">Activar Servicio</string>
-    <string name="permission_accessibility_granted">✓ Servicio activo</string>
-    <string name="setup_complete_title">¡Todo listo!</string>
-    <string name="setup_complete_description">Ahora puedes seleccionar texto japonés en cualquier app y verás el diccionario automáticamente.</string>
-    <string name="test_button">Probar Diccionario</string>
+    <string name="welcome_title">Welcome to GodTap Dictionary</string>
+    <string name="welcome_subtitle">Translate Japanese words in any app</string>
+    <string name="permission_overlay_title">Step 1: Overlay Permission</string>
+    <string name="permission_overlay_description">We need permission to display the dictionary over other apps</string>
+    <string name="permission_overlay_button">Grant Permission</string>
+    <string name="permission_overlay_granted">✓ Permission Granted</string>
+    <string name="permission_accessibility_title">Accessibility Service</string>
+    <string name="permission_accessibility_description">Enable the service to detect selected text</string>
+    <string name="permission_accessibility_button">Open Settings</string>
+    <string name="permission_accessibility_granted">✓ Service Active</string>
+    <string name="setup_complete_title">All Set!</string>
+    <string name="setup_complete_description">Now you can select Japanese text in any app and see the dictionary automatically.</string>
+    <string name="test_button">Test Dictionary</string>
     
     <!-- Status -->
-    <string name="status_active">Activo</string>
-    <string name="status_inactive">Inactivo</string>
+    <string name="status_active">Active</string>
+    <string name="status_inactive">Inactive</string>
     
     <!-- Popup -->
-    <string name="popup_close">Cerrar</string>
-    <string name="popup_no_translation">No se encontró traducción</string>
+    <string name="popup_close">Close</string>
+    <string name="popup_no_translation">Translation not found</string>
     
     <!-- Notifications -->
-    <string name="notification_channel_name">Servicio de Diccionario</string>
-    <string name="notification_channel_description">Muestra el estado del servicio de diccionario</string>
-    <string name="notification_title">GodTap Dictionary activo</string>
-    <string name="notification_text">Selecciona texto japonés para ver traducciones</string>
-    <string name="notification_status_enabled">✓ Servicio activo - Selecciona texto para traducir</string>
-    <string name="notification_status_disabled">✕ Servicio desactivado - Toca para activar</string>
-    <string name="notification_action_enable">Activar</string>
-    <string name="notification_action_disable">Desactivar</string>
+    <string name="notification_channel_name">Dictionary Service</string>
+    <string name="notification_channel_description">Shows dictionary service status</string>
+    <string name="notification_title">GodTap Dictionary active</string>
+    <string name="notification_text">Select Japanese text to see translations</string>
+    <string name="notification_status_enabled">✓ Service active - Select text to translate</string>
+    <string name="notification_status_disabled">✕ Service disabled - Tap to activate</string>
+    <string name="notification_action_enable">Enable</string>
+    <string name="notification_action_disable">Disable</string>
 </resources>

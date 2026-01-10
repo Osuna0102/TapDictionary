@@ -137,28 +137,10 @@ class MultiDictionaryDownloader(private val context: Context) {
             
             // Get or create metadata
             var metadata = database.dictionaryMetadataDao().getByDictionaryId(dictionaryId)
-            
-            // Always update metadata from index.json to ensure latest info (especially language codes)
-            val updatedMetadata = createMetadataFromZip(zipFile, dictionaryId)
-            
             if (metadata == null) {
-                // Create new metadata
-                database.dictionaryMetadataDao().insert(updatedMetadata)
-                metadata = updatedMetadata
-            } else {
-                // Update existing metadata with info from index.json
-                val merged = metadata.copy(
-                    name = updatedMetadata.name,
-                    version = updatedMetadata.version,
-                    sourceLanguage = updatedMetadata.sourceLanguage,
-                    targetLanguage = updatedMetadata.targetLanguage,
-                    description = updatedMetadata.description,
-                    author = updatedMetadata.author,
-                    website = updatedMetadata.website,
-                    fileSize = updatedMetadata.fileSize
-                )
-                database.dictionaryMetadataDao().update(merged)
-                metadata = merged
+                // Create metadata from index.json if available
+                metadata = createMetadataFromZip(zipFile, dictionaryId)
+                database.dictionaryMetadataDao().insert(metadata)
             }
             
             // Import based on format

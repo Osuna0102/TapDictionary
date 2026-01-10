@@ -97,6 +97,9 @@ dependencies {
     // ML Kit Text Recognition for OCR
     implementation("com.google.mlkit:text-recognition:16.0.0")
     
+    // Flexbox Layout for clickable sentence wrapping
+    implementation("com.google.android.flexbox:flexbox:3.0.0")
+    
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

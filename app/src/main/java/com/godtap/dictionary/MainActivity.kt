@@ -72,7 +72,8 @@ class MainActivity : ComponentActivity() {
         description: String,
         isGranted: Boolean,
         buttonText: String,
-        onButtonClick: () -> Unit
+        onButtonClick: () -> Unit,
+        alwaysEnabled: Boolean = false
     ) {
         ElevatedCard(
             modifier = Modifier.fillMaxWidth(),
@@ -94,11 +95,24 @@ class MainActivity : ComponentActivity() {
                             MaterialTheme.colorScheme.outline,
                         modifier = Modifier.size(28.dp)
                     )
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (alwaysEnabled) {
+                            Text(
+                                text = if (isGranted) "Status: ON" else "Status: OFF",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isGranted) 
+                                    MaterialTheme.colorScheme.primary 
+                                else 
+                                    MaterialTheme.colorScheme.outline,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
                 
                 Text(
@@ -110,7 +124,7 @@ class MainActivity : ComponentActivity() {
                 
                 Button(
                     onClick = onButtonClick,
-                    enabled = !isGranted,
+                    enabled = alwaysEnabled || !isGranted,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 40.dp),
@@ -386,38 +400,30 @@ class MainActivity : ComponentActivity() {
                 Spacer(modifier = Modifier.height(24.dp))
             }
             
-            // Step 1: Overlay Permission
-            PermissionCard(
-                title = getString(R.string.permission_overlay_title),
-                description = getString(R.string.permission_overlay_description),
-                isGranted = overlayPermissionGranted,
-                buttonText = if (overlayPermissionGranted) 
-                    getString(R.string.permission_overlay_granted)
-                else 
-                    getString(R.string.permission_overlay_button),
-                onButtonClick = {
-                    if (!overlayPermissionGranted) {
+            // Step 1: Overlay Permission (only show if not granted)
+            if (!overlayPermissionGranted) {
+                PermissionCard(
+                    title = getString(R.string.permission_overlay_title),
+                    description = getString(R.string.permission_overlay_description),
+                    isGranted = overlayPermissionGranted,
+                    buttonText = getString(R.string.permission_overlay_button),
+                    onButtonClick = {
                         requestOverlayPermission()
                     }
-                }
-            )
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+            }
             
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // Step 2: Accessibility Service
+            // Accessibility Service - Always visible with status
             PermissionCard(
                 title = getString(R.string.permission_accessibility_title),
                 description = getString(R.string.permission_accessibility_description),
                 isGranted = accessibilityEnabled,
-                buttonText = if (accessibilityEnabled) 
-                    getString(R.string.permission_accessibility_granted)
-                else 
-                    getString(R.string.permission_accessibility_button),
+                buttonText = getString(R.string.permission_accessibility_button),
                 onButtonClick = {
-                    if (!accessibilityEnabled) {
-                        openAccessibilitySettings()
-                    }
-                }
+                    openAccessibilitySettings()
+                },
+                alwaysEnabled = true
             )
             
             Spacer(modifier = Modifier.height(48.dp))
@@ -459,30 +465,7 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(top = 8.dp)
                         )
                         
-                        Spacer(modifier = Modifier.height(20.dp))
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            FilledTonalButton(
-                                onClick = { testPopup() },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Test Popup")
-                            }
-                            
-                            FilledTonalButton(
-                                onClick = { showTestText() },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text(getString(R.string.test_button))
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(32.dp))
                         
                         Divider(
                             modifier = Modifier.fillMaxWidth(),
@@ -547,31 +530,6 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Text("🔊 Text-to-Speech Settings")
                         }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        // Debug button
-                        OutlinedButton(
-                            onClick = { launchDebugScreen() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("🔍 Dictionary Debug")
-                        }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        // Gesture Testing button
-                        OutlinedButton(
-                            onClick = { launchGestureTestActivity() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
-                            )
-                        ) {
-                            Text("✋ Gesture Testing Sandbox")
-                        }
                     }
                 }
             }
@@ -614,14 +572,6 @@ class MainActivity : ComponentActivity() {
                         )
                         
                         MenuItem(
-                            text = "Dictionary Debug",
-                            onClick = {
-                                sidebarOpen = false
-                                launchDebugScreen()
-                            }
-                        )
-                        
-                        MenuItem(
                             text = "App Filter Settings",
                             onClick = {
                                 sidebarOpen = false
@@ -634,22 +584,6 @@ class MainActivity : ComponentActivity() {
                             onClick = {
                                 sidebarOpen = false
                                 launchTtsSettings()
-                            }
-                        )
-                        
-                        MenuItem(
-                            text = "Probar Diccionario",
-                            onClick = {
-                                sidebarOpen = false
-                                showTestText()
-                            }
-                        )
-                        
-                        MenuItem(
-                            text = "Test Popup",
-                            onClick = {
-                                sidebarOpen = false
-                                testPopup()
                             }
                         )
                         

@@ -100,6 +100,24 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     private var isServiceEnabled: Boolean = true
     private var isUnderlineEnabled: Boolean = false
     
+    // SharedPreferences listener for real-time updates
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        when (key) {
+            KEY_UNDERLINE_ENABLED -> {
+                val newValue = sharedPreferences.getBoolean(KEY_UNDERLINE_ENABLED, false)
+                if (newValue != isUnderlineEnabled) {
+                    Log.d(TAG, "Underline preference changed externally: $isUnderlineEnabled -> $newValue")
+                    isUnderlineEnabled = newValue
+                    underlineRenderer.isEnabled = newValue
+                    if (!newValue) {
+                        underlineRenderer.clearAllUnderlines()
+                    }
+                    showNotification()
+                }
+            }
+        }
+    }
+    
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "══════════════════════════════════════════════════════")
@@ -107,6 +125,15 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         Log.i(TAG, "══════════════════════════════════════════════════════")
         serviceInstance = this
         overlayManager = OverlayManager(this)
+        
+        // Set up callback for word clicks from clickable sentence popup
+        overlayManager.onWordClickCallback = { word, language, depth ->
+            Log.d(TAG, "Word clicked from popup: $word, language: $language, depth: $depth")
+            serviceScope.launch {
+                // Look up the clicked word
+                lookupWord(word, -1, -1, language, depth)
+            }
+        }
         
         // Native gesture detection will be enabled in onServiceConnected()
         Log.i(TAG, "Service created - gesture detection will use native Android API")
@@ -158,6 +185,10 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         // Initialize app filter manager
         appFilterManager = AppFilterManager(this)
         underlineRenderer.isEnabled = isUnderlineEnabled
+        
+        // Register preference change listener for real-time updates
+        sharedPreferences.registerOnSharedPreferenceChangeListener(prefsListener)
+        Log.d(TAG, "SharedPreferences listener registered")
     }
     
     override fun onServiceConnected() {
@@ -368,10 +399,12 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     
                     if (tapPosition >= 0) {
                         Log.d(TAG, "✓ Tap detected at position $tapPosition: '${fullText.getOrNull(tapPosition)}'")
-                        processTextFromPosition(fullText, tapPosition, sourceLang)
+                        // Pass fullText as the sentence context
+                        processTextFromPosition(fullText, tapPosition, sourceLang, fullSentence = fullText)
                     } else {
-                        Log.d(TAG, "⊘ Could not determine tap position, scanning from start")
-                        processTextFromPosition(fullText, 0, sourceLang)
+                        Log.d(TAG, "⊘ Could not determine tap position - showing clickable sentence")
+                        // Show clickable sentence popup when position is unknown
+                        overlayManager.showClickableSentence(fullText, sourceLang, depth = 0)
                     }
                 } else {
                     Log.d(TAG, "Text language doesn't match active dictionary ($sourceLang)")
@@ -841,13 +874,102 @@ class TextSelectionAccessibilityService : AccessibilityService() {
     }
     
     /**
+     * Lookup a word and show popup (used for popup word clicks)
+     * @param word The word to look up
+     * @param x Screen X coordinate for popup positioning (-1 for default)
+     * @param y Screen Y coordinate for popup positioning (-1 for default)
+     * @param languageCode ISO 639-1 language code (ja, es, ko, etc.)
+     * @param depth Current popup depth (for nested popups)
+     */
+    private suspend fun lookupWord(word: String, x: Int = -1, y: Int = -1, languageCode: String, depth: Int = 0) {
+        try {
+            Log.d(TAG, "lookupWord() called: '$word', lang: $languageCode, depth: $depth")
+            
+            // Check depth limit
+            if (depth >= 2) {
+                Log.w(TAG, "Max popup depth reached, ignoring")
+                return
+            }
+            
+            // Create language-specific lookup
+            val dictionaryLookup = DictionaryLookup(dictionaryRepository, languageCode)
+            
+            // Show loading popup
+            overlayManager.showLoadingPopup(word, x, y, languageCode)
+            
+            // Lookup the word
+            val lookupResult = dictionaryLookup.lookup(word)
+            
+            if (lookupResult != null) {
+                val entry = lookupResult.entry
+                Log.d(TAG, "✓ Found entry for '$word'")
+                
+                // Get primary kanji and reading
+                val kanji = entry.getPrimaryKanji()
+                val reading = entry.primaryReading
+                val rawGlosses = entry.getAllGlosses()
+                val partsOfSpeech = entry.getPartsOfSpeech()
+                
+                // Parse Yomichan structured content (JSON format)
+                val glosses = rawGlosses.map { parseYomichanGloss(it) }
+                
+                // Format the word display
+                val wordDisplay = if (kanji != null) {
+                    "$kanji ($reading)"
+                } else {
+                    reading
+                }
+                
+                // Format the translation
+                val translation = buildString {
+                    val isApiTranslated = entry.senses.any { sense -> 
+                        sense.info.contains("Auto-translated via API")
+                    }
+                    
+                    if (isApiTranslated) {
+                        append("[Auto-translated]\n")
+                    } else if (partsOfSpeech.isNotEmpty()) {
+                        append("[${partsOfSpeech.first()}]\n")
+                    }
+                    append(glosses.joinToString("; "))
+                }
+                
+                overlayManager.showPopup(wordDisplay, translation, entry.lookupCount + 1, x, y, languageCode, null, depth)
+            } else {
+                Log.d(TAG, "⊘ No dictionary entry found for '$word'")
+                
+                // Try online translation
+                val activeDictionary = dictionaryManager.getActiveDictionary()
+                val targetLang = activeDictionary?.targetLanguage ?: "en"
+                val translatedText = translationService.translate(word, languageCode, targetLang)
+                
+                if (translatedText != null && translatedText.isNotBlank()) {
+                    Log.d(TAG, "✓ Fallback translation: '$word' -> '$translatedText'")
+                    
+                    // Create dictionary entry
+                    createDictionaryEntryForApiTranslation(word, translatedText, languageCode)
+                    
+                    val translation = "[Auto-translated]\n$translatedText"
+                    overlayManager.showPopup(word, translation, 1, x, y, languageCode, null, depth)
+                } else {
+                    overlayManager.showPopup(word, getString(R.string.popup_no_translation), 0, x, y, languageCode, null, depth)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error looking up word", e)
+            overlayManager.showPopup(word, "Error: ${e.message}", 0, x, y, languageCode, null, depth)
+        }
+    }
+    
+    /**
      * Process text starting from a specific character position
      * This is critical: scan from WHERE the user tapped, not from position 0!
      * @param text The full text
      * @param startPosition Position where user tapped
      * @param languageCode ISO 639-1 language code (ja, es, ko, etc.)
+     * @param fullSentence Optional full sentence context to show in popup
      */
-    private fun processTextFromPosition(text: String, startPosition: Int, languageCode: String, x: Int = -1, y: Int = -1) {
+    private fun processTextFromPosition(text: String, startPosition: Int, languageCode: String, x: Int = -1, y: Int = -1, fullSentence: String? = null) {
         serviceScope.launch {
             try {
                 // Debounce: ignore rapid repeated selections within 500ms
@@ -928,7 +1050,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     
                     // Pass lookup count + 1 (since we just incremented it in the repository)
                     Log.d(TAG, "  Displaying with lookupCount: ${entry.lookupCount + 1} (entry.lookupCount=${entry.lookupCount} + 1)")
-                    overlayManager.showPopup(wordDisplay, translation, entry.lookupCount + 1, x, y, languageCode)
+                    overlayManager.showPopup(wordDisplay, translation, entry.lookupCount + 1, x, y, languageCode, fullSentence, depth = 0)
                 } else {
                     Log.d(TAG, "⊘ No dictionary entry found from position $startPosition: '$textToLookup'")
                     
@@ -955,15 +1077,15 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                             append("[Auto-translated]\n")
                             append(translatedText)
                         }
-                        overlayManager.showPopup(textToLookup, translation, 1, x, y, languageCode)
+                        overlayManager.showPopup(textToLookup, translation, 1, x, y, languageCode, fullSentence, depth = 0)
                     } else {
                         Log.d(TAG, "⊘ Fallback translation failed")
-                        overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation), 0, x, y, languageCode)
+                        overlayManager.showPopup(textToLookup, getString(R.string.popup_no_translation), 0, x, y, languageCode, fullSentence, depth = 0)
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing text", e)
-                overlayManager.showPopup(text, "Error: ${e.message}", 0, x, y, languageCode)
+                overlayManager.showPopup(text, "Error: ${e.message}", 0, x, y, languageCode, fullSentence, depth = 0)
             }
         }
     }
@@ -1422,6 +1544,10 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         Log.w(TAG, "══════════════════════════════════════════════════════")
         Log.w(TAG, "SERVICE DESTROYED")
         Log.w(TAG, "══════════════════════════════════════════════════════")
+        
+        // Unregister preference listener
+        sharedPreferences.unregisterOnSharedPreferenceChangeListener(prefsListener)
+        
         serviceScope.cancel()
         overlayManager.cleanup() // Cleanup TTS and hide popup
         underlineRenderer.destroy()
@@ -1521,9 +1647,7 @@ class TextSelectionAccessibilityService : AccessibilityService() {
         val newState = !isUnderlineEnabled
         Log.d(TAG, "Toggling underline state via gesture: $isUnderlineEnabled -> $newState")
         
-        isUnderlineEnabled = newState
-        underlineRenderer.isEnabled = newState
-        sharedPreferences.edit().putBoolean(KEY_UNDERLINE_ENABLED, newState).apply()
+        // Use the centralized update method
         updateUnderlineState(newState)
     }
     
