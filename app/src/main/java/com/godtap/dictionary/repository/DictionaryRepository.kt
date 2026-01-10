@@ -127,4 +127,25 @@ class DictionaryRepository(private val database: AppDatabase) {
         
         return@withContext entry
     }
+    
+    /**
+     * Get recent lookups (entries with lookup count > 0)
+     */
+    suspend fun getRecentLookups(limit: Int = 10): List<DictionaryEntry> = withContext(Dispatchers.IO) {
+        database.dictionaryDao().getRecentLookups(limit)
+    }
+    
+    /**
+     * Get most looked up word
+     */
+    suspend fun getMostLookedUp(): DictionaryEntry? = withContext(Dispatchers.IO) {
+        database.dictionaryDao().getMostLookedUp()
+    }
+    
+    /**
+     * Get total lookup count
+     */
+    suspend fun getTotalLookupCount(): Int = withContext(Dispatchers.IO) {
+        database.dictionaryDao().getTotalLookupCount() ?: 0
+    }
 }

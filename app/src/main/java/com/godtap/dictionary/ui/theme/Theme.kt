@@ -16,60 +16,68 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Modern Material 3 Color Palette
-private val md_theme_light_primary = Color(0xFF0061A4)
+// TapDictionary Brand Colors - Clean Blue Theme (exact match to taptranslate-now)
+// Primary: #2196F3 (Material Blue)
+private val md_theme_light_primary = Color(0xFF2196F3)
 private val md_theme_light_onPrimary = Color(0xFFFFFFFF)
-private val md_theme_light_primaryContainer = Color(0xFFD1E4FF)
-private val md_theme_light_onPrimaryContainer = Color(0xFF001D36)
-private val md_theme_light_secondary = Color(0xFF535F70)
-private val md_theme_light_onSecondary = Color(0xFFFFFFFF)
-private val md_theme_light_secondaryContainer = Color(0xFFD7E3F7)
-private val md_theme_light_onSecondaryContainer = Color(0xFF101C2B)
-private val md_theme_light_tertiary = Color(0xFF6B5778)
+private val md_theme_light_primaryContainer = Color(0xFFBBDEFB) // Light blue
+private val md_theme_light_onPrimaryContainer = Color(0xFF0D47A1)
+// Secondary: Soft Blue Gray
+private val md_theme_light_secondary = Color(0xFFECEFF2)
+private val md_theme_light_onSecondary = Color(0xFF2A3845)
+private val md_theme_light_secondaryContainer = Color(0xFFF5F7F9)
+private val md_theme_light_onSecondaryContainer = Color(0xFF1A2733)
+// Accent: Warm Orange #FF9800
+private val md_theme_light_tertiary = Color(0xFFFF9800)
 private val md_theme_light_onTertiary = Color(0xFFFFFFFF)
-private val md_theme_light_tertiaryContainer = Color(0xFFF2DAFF)
-private val md_theme_light_onTertiaryContainer = Color(0xFF251431)
-private val md_theme_light_error = Color(0xFFBA1A1A)
-private val md_theme_light_errorContainer = Color(0xFFFFDAD6)
+private val md_theme_light_tertiaryContainer = Color(0xFFFFE0B2) // Light orange
+private val md_theme_light_onTertiaryContainer = Color(0xFFE65100)
+private val md_theme_light_error = Color(0xFFDC2626)
+private val md_theme_light_errorContainer = Color(0xFFFEE2E2)
 private val md_theme_light_onError = Color(0xFFFFFFFF)
-private val md_theme_light_onErrorContainer = Color(0xFF410002)
-private val md_theme_light_background = Color(0xFFFDFCFF)
-private val md_theme_light_onBackground = Color(0xFF1A1C1E)
-private val md_theme_light_surface = Color(0xFFFDFCFF)
-private val md_theme_light_onSurface = Color(0xFF1A1C1E)
-private val md_theme_light_surfaceVariant = Color(0xFFDFE2EB)
-private val md_theme_light_onSurfaceVariant = Color(0xFF43474E)
-private val md_theme_light_outline = Color(0xFF73777F)
-private val md_theme_light_inverseOnSurface = Color(0xFFF1F0F4)
-private val md_theme_light_inverseSurface = Color(0xFF2F3033)
-private val md_theme_light_inversePrimary = Color(0xFF9ECAFF)
+private val md_theme_light_onErrorContainer = Color(0xFF7F1D1D)
+// Background: Clean light
+private val md_theme_light_background = Color(0xFFFAFBFC)
+private val md_theme_light_onBackground = Color(0xFF151F28)
+// Surface: Pure white
+private val md_theme_light_surface = Color(0xFFFFFFFF)
+private val md_theme_light_onSurface = Color(0xFF151F28)
+// Muted: Light background surfaces
+private val md_theme_light_surfaceVariant = Color(0xFFF7F8F9)
+private val md_theme_light_onSurfaceVariant = Color(0xFF5A6B7A)
+// Border
+private val md_theme_light_outline = Color(0xFFDAE0E6)
+private val md_theme_light_inverseOnSurface = Color(0xFFFAFBFC)
+private val md_theme_light_inverseSurface = Color(0xFF1F2937)
+private val md_theme_light_inversePrimary = Color(0xFF64B5F6)
 
-private val md_theme_dark_primary = Color(0xFF9ECAFF)
-private val md_theme_dark_onPrimary = Color(0xFF003258)
-private val md_theme_dark_primaryContainer = Color(0xFF00497D)
-private val md_theme_dark_onPrimaryContainer = Color(0xFFD1E4FF)
-private val md_theme_dark_secondary = Color(0xFFBBC7DB)
-private val md_theme_dark_onSecondary = Color(0xFF253140)
-private val md_theme_dark_secondaryContainer = Color(0xFF3B4858)
-private val md_theme_dark_onSecondaryContainer = Color(0xFFD7E3F7)
-private val md_theme_dark_tertiary = Color(0xFFD6BEE4)
-private val md_theme_dark_onTertiary = Color(0xFF3B2948)
-private val md_theme_dark_tertiaryContainer = Color(0xFF523F5F)
-private val md_theme_dark_onTertiaryContainer = Color(0xFFF2DAFF)
-private val md_theme_dark_error = Color(0xFFFFB4AB)
-private val md_theme_dark_errorContainer = Color(0xFF93000A)
-private val md_theme_dark_onError = Color(0xFF690005)
-private val md_theme_dark_onErrorContainer = Color(0xFFFFDAD6)
-private val md_theme_dark_background = Color(0xFF1A1C1E)
-private val md_theme_dark_onBackground = Color(0xFFE2E2E6)
-private val md_theme_dark_surface = Color(0xFF1A1C1E)
-private val md_theme_dark_onSurface = Color(0xFFE2E2E6)
-private val md_theme_dark_surfaceVariant = Color(0xFF43474E)
-private val md_theme_dark_onSurfaceVariant = Color(0xFFC3C7CF)
-private val md_theme_dark_outline = Color(0xFF8D9199)
-private val md_theme_dark_inverseOnSurface = Color(0xFF1A1C1E)
-private val md_theme_dark_inverseSurface = Color(0xFFE2E2E6)
-private val md_theme_dark_inversePrimary = Color(0xFF0061A4)
+// Dark Theme Colors
+private val md_theme_dark_primary = Color(0xFF64B5F6) // Light blue
+private val md_theme_dark_onPrimary = Color(0xFF0D47A1)
+private val md_theme_dark_primaryContainer = Color(0xFF1976D2)
+private val md_theme_dark_onPrimaryContainer = Color(0xFFBBDEFB)
+private val md_theme_dark_secondary = Color(0xFF3B4858)
+private val md_theme_dark_onSecondary = Color(0xFFD7E3F7)
+private val md_theme_dark_secondaryContainer = Color(0xFF2A3845)
+private val md_theme_dark_onSecondaryContainer = Color(0xFFECEFF2)
+private val md_theme_dark_tertiary = Color(0xFFFFB74D) // Light orange
+private val md_theme_dark_onTertiary = Color(0xFFE65100)
+private val md_theme_dark_tertiaryContainer = Color(0xFFF57C00)
+private val md_theme_dark_onTertiaryContainer = Color(0xFFFFE0B2)
+private val md_theme_dark_error = Color(0xFFFCA5A5)
+private val md_theme_dark_errorContainer = Color(0xFFB91C1C)
+private val md_theme_dark_onError = Color(0xFF7F1D1D)
+private val md_theme_dark_onErrorContainer = Color(0xFFFEE2E2)
+private val md_theme_dark_background = Color(0xFF151F28)
+private val md_theme_dark_onBackground = Color(0xFFF0F4F8)
+private val md_theme_dark_surface = Color(0xFF1F2937)
+private val md_theme_dark_onSurface = Color(0xFFF0F4F8)
+private val md_theme_dark_surfaceVariant = Color(0xFF2A3845)
+private val md_theme_dark_onSurfaceVariant = Color(0xFFB0BDC9)
+private val md_theme_dark_outline = Color(0xFF4A5A6B)
+private val md_theme_dark_inverseOnSurface = Color(0xFF151F28)
+private val md_theme_dark_inverseSurface = Color(0xFFF0F4F8)
+private val md_theme_dark_inversePrimary = Color(0xFF2196F3)
 
 private val LightColorScheme = lightColorScheme(
     primary = md_theme_light_primary,
@@ -133,7 +141,7 @@ private val DarkColorScheme = darkColorScheme(
 fun GodTapDictionaryTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

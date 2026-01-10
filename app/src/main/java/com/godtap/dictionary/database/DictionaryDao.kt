@@ -144,4 +144,32 @@ interface DictionaryDao {
         LIMIT :limit
     """)
     suspend fun getByJlptLevel(level: Int, limit: Int = 100): List<DictionaryEntry>
+    
+    /**
+     * Get recent lookups (entries with lookupCount > 0) ordered by most recent
+     */
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE lookupCount > 0 
+        ORDER BY id DESC 
+        LIMIT :limit
+    """)
+    suspend fun getRecentLookups(limit: Int = 10): List<DictionaryEntry>
+    
+    /**
+     * Get most looked up word
+     */
+    @Query("""
+        SELECT * FROM dictionary_entries 
+        WHERE lookupCount > 0 
+        ORDER BY lookupCount DESC 
+        LIMIT 1
+    """)
+    suspend fun getMostLookedUp(): DictionaryEntry?
+    
+    /**
+     * Get total lookup count across all entries
+     */
+    @Query("SELECT SUM(lookupCount) FROM dictionary_entries")
+    suspend fun getTotalLookupCount(): Int
 }

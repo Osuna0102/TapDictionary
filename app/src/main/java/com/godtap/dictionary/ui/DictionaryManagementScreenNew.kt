@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -423,6 +424,7 @@ fun BrowseAndImportTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -590,7 +592,8 @@ fun DictionaryCardWithActivation(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(if (isActive) 8.dp else 2.dp),
+        elevation = CardDefaults.cardElevation(if (isActive) 4.dp else 1.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = if (isActive) {
             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
         } else {
@@ -681,7 +684,8 @@ fun DictionaryCardWithActivation(
                 if (!dictionary.installed) {
                     Button(
                         onClick = onDownload,
-                        enabled = !isDownloading
+                        enabled = !isDownloading,
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -690,7 +694,8 @@ fun DictionaryCardWithActivation(
                 } else {
                     if (!isActive) {
                         Button(
-                            onClick = onSetActive
+                            onClick = onSetActive,
+                            shape = RoundedCornerShape(16.dp)
                         ) {
                             Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -699,7 +704,8 @@ fun DictionaryCardWithActivation(
                     } else {
                         Button(
                             onClick = {},
-                            enabled = false
+                            enabled = false,
+                            shape = RoundedCornerShape(16.dp)
                         ) {
                             Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -709,6 +715,7 @@ fun DictionaryCardWithActivation(
                     Spacer(modifier = Modifier.width(8.dp))
                     OutlinedButton(
                         onClick = onDelete,
+                        shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
                         )

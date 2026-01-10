@@ -5,27 +5,17 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.godtap.dictionary.ui.theme.GodTapDictionaryTheme
 import com.godtap.dictionary.ui.DictionaryManagementActivity
+import com.godtap.dictionary.ui.components.BottomNavigation
+import com.godtap.dictionary.ui.screens.*
 import com.godtap.dictionary.util.PermissionHelper
 import com.godtap.dictionary.overlay.OverlayManager
 import com.godtap.dictionary.downloader.DictionaryDownloader
@@ -41,21 +31,16 @@ class MainActivity : ComponentActivity() {
         // Refresh UI after permission request
     }
     
-    private fun isXiaomiDevice(): Boolean {
-        val manufacturer = Build.MANUFACTURER.lowercase()
-        val brand = Build.BRAND.lowercase()
-        return manufacturer.contains("xiaomi") || brand.contains("xiaomi") || 
-               manufacturer.contains("poco") || brand.contains("poco") ||
-               manufacturer.contains("redmi") || brand.contains("redmi")
-    }
-    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
         overlayManager = OverlayManager(applicationContext)
         
         setContent {
-            GodTapDictionaryTheme {
+            val sharedPrefs = getSharedPreferences("dictionary_prefs", MODE_PRIVATE)
+            val isDarkTheme = remember { mutableStateOf(sharedPrefs.getBoolean("dark_theme", false)) }
+            
+            GodTapDictionaryTheme(darkTheme = isDarkTheme.value) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -66,97 +51,6 @@ class MainActivity : ComponentActivity() {
         }
     }
     
-    @Composable
-    private fun PermissionCard(
-        title: String,
-        description: String,
-        isGranted: Boolean,
-        buttonText: String,
-        onButtonClick: () -> Unit,
-        alwaysEnabled: Boolean = false
-    ) {
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = if (isGranted) 
-                            MaterialTheme.colorScheme.primary 
-                        else 
-                            MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Column {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (alwaysEnabled) {
-                            Text(
-                                text = if (isGranted) "Status: ON" else "Status: OFF",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isGranted) 
-                                    MaterialTheme.colorScheme.primary 
-                                else 
-                                    MaterialTheme.colorScheme.outline,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-                
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 16.dp, start = 40.dp)
-                )
-                
-                Button(
-                    onClick = onButtonClick,
-                    enabled = alwaysEnabled || !isGranted,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 40.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = buttonText,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                }
-            }
-        }
-    }
-    
-    @Composable
-    private fun MenuItem(text: String, onClick: () -> Unit) {
-        TextButton(
-            onClick = onClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Start
-            )
-        }
-    }
-
     @Composable
     fun MainScreen() {
         val scope = rememberCoroutineScope()
@@ -173,13 +67,16 @@ class MainActivity : ComponentActivity() {
         var downloadStage by remember { mutableStateOf("") }
         var isDownloading by remember { mutableStateOf(false) }
         var downloadError by remember { mutableStateOf<String?>(null) }
-        var sidebarOpen by remember { mutableStateOf(false) }
         
+        var currentRoute by remember { mutableStateOf("home") }
+        var showOnboarding by remember { 
+            mutableStateOf(!overlayPermissionGranted || !accessibilityEnabled || !dictionaryImported)
+        }
+        
+        // Check dictionary status and start download if needed
         LaunchedEffect(Unit) {
-            // Check if dictionary is already imported
             dictionaryImported = downloader.isDictionaryImported()
             
-            // If not imported, start download automatically
             if (!dictionaryImported && !isDownloading) {
                 isDownloading = true
                 downloadStage = "Starting download..."
@@ -221,395 +118,56 @@ class MainActivity : ComponentActivity() {
                 kotlinx.coroutines.delay(1000)
                 overlayPermissionGranted = PermissionHelper.hasOverlayPermission(this@MainActivity)
                 accessibilityEnabled = PermissionHelper.isAccessibilityServiceEnabled(this@MainActivity)
+                
+                // Auto-dismiss onboarding if all setup is complete
+                if (overlayPermissionGranted && accessibilityEnabled && dictionaryImported) {
+                    showOnboarding = false
+                }
             }
         }
         
         Box(modifier = Modifier.fillMaxSize()) {
-            // Main content
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Top bar with hamburger menu
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = { sidebarOpen = true },
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Menu",
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-            
-            // Modern Header with icon
-            Surface(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(20.dp)),
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "📖",
-                        fontSize = 48.sp
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Header
-            Text(
-                text = getString(R.string.welcome_title),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            
-            Text(
-                text = getString(R.string.welcome_subtitle),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-            
-            Spacer(modifier = Modifier.height(40.dp))
-            
-            // Step 0: Dictionary Download
-            if (!dictionaryImported || isDownloading) {
-                ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = if (downloadError != null) 
-                            MaterialTheme.colorScheme.errorContainer 
-                        else 
-                            MaterialTheme.colorScheme.secondaryContainer
-                    ),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (downloadError != null) 
-                                    Icons.Default.Settings 
-                                else 
-                                    Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = if (downloadError != null)
-                                    MaterialTheme.colorScheme.onErrorContainer
-                                else
-                                    MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = "Dictionary Setup",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        if (downloadError != null) {
-                            Text(
-                                text = "Download failed: $downloadError",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            FilledTonalButton(
-                                onClick = {
-                                    downloadError = null
-                                    isDownloading = true
-                                    scope.launch {
-                                        try {
-                                            downloader.downloadAndImport(
-                                                listener = object : DictionaryDownloader.DownloadProgressListener {
-                                                    override fun onProgress(bytesDownloaded: Long, totalBytes: Long, stage: String) {
-                                                        downloadStage = stage
-                                                        downloadProgress = if (totalBytes > 0) {
-                                                            (bytesDownloaded.toFloat() / totalBytes.toFloat())
-                                                        } else 0.5f
-                                                    }
-                                                    override fun onComplete() {
-                                                        dictionaryImported = true
-                                                        isDownloading = false
-                                                    }
-                                                    override fun onError(error: Exception) {
-                                                        downloadError = error.message
-                                                        isDownloading = false
-                                                    }
-                                                }
-                                            )
-                                        } catch (e: Exception) {
-                                            downloadError = e.message
-                                            isDownloading = false
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Retry Download")
-                            }
-                        } else if (isDownloading) {
-                            Text(
-                                text = downloadStage,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            LinearProgressIndicator(
-                                progress = downloadProgress,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        } else {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = "✓ Dictionary ready!",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-            }
-            
-            // Step 1: Overlay Permission (only show if not granted)
-            if (!overlayPermissionGranted) {
-                PermissionCard(
-                    title = getString(R.string.permission_overlay_title),
-                    description = getString(R.string.permission_overlay_description),
-                    isGranted = overlayPermissionGranted,
-                    buttonText = getString(R.string.permission_overlay_button),
-                    onButtonClick = {
-                        requestOverlayPermission()
-                    }
+            if (showOnboarding) {
+                OnboardingScreen(
+                    overlayPermissionGranted = overlayPermissionGranted,
+                    accessibilityEnabled = accessibilityEnabled,
+                    dictionaryImported = dictionaryImported,
+                    onRequestOverlayPermission = { requestOverlayPermission() },
+                    onOpenAccessibilitySettings = { openAccessibilitySettings() },
+                    onSkip = { showOnboarding = false }
                 )
-                Spacer(modifier = Modifier.height(24.dp))
-            }
-            
-            // Accessibility Service - Always visible with status
-            PermissionCard(
-                title = getString(R.string.permission_accessibility_title),
-                description = getString(R.string.permission_accessibility_description),
-                isGranted = accessibilityEnabled,
-                buttonText = getString(R.string.permission_accessibility_button),
-                onButtonClick = {
-                    openAccessibilitySettings()
-                },
-                alwaysEnabled = true
-            )
-            
-            Spacer(modifier = Modifier.height(48.dp))
-            
-            // Setup Complete
-            if (overlayPermissionGranted && accessibilityEnabled) {
-                ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(56.dp)
+            } else {
+                // Main app with bottom navigation
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when (currentRoute) {
+                        "home" -> HomeScreen(
+                            onTestPopup = { word, translation ->
+                                overlayManager.showPopup(word, translation)
+                            }
                         )
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Text(
-                            text = getString(R.string.setup_complete_title),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        "history" -> HistoryScreen(
+                            onWordClick = { word, translation ->
+                                overlayManager.showPopup(word, translation)
+                            }
                         )
-                        
-                        Text(
-                            text = getString(R.string.setup_complete_description),
-                            style = MaterialTheme.typography.bodyMedium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(top = 8.dp)
+                        "features" -> FeaturesScreen()
+                        "settings" -> SettingsScreen(
+                            onDictionaryManagementClick = { launchDictionaryManagement() },
+                            onAppFilterClick = { launchAppFilterSettings() },
+                            onTtsSettingsClick = { launchTtsSettings() }
                         )
-                        
-                        Spacer(modifier = Modifier.height(32.dp))
-                        
-                        Divider(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                        )
-                        
-                        Spacer(modifier = Modifier.height(20.dp))
-                        
-                        // Info about managing dictionaries
-                        Text(
-                            text = "Manage your dictionaries:",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        // Manage Dictionaries button
-                        Button(
-                            onClick = { launchDictionaryManagement() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Manage Dictionaries",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        // App Filter Settings button
-                        OutlinedButton(
-                            onClick = { launchAppFilterSettings() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("⚙️ App Filter Settings")
-                        }
-                        
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        // TTS Settings button
-                        OutlinedButton(
-                            onClick = { launchTtsSettings() },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("🔊 Text-to-Speech Settings")
-                        }
                     }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            }
-            
-            // Sidebar
-            if (sidebarOpen) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(280.dp)
-                        .align(Alignment.TopEnd),
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 8.dp
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp)
-                    ) {
-                        // Header
-                        Text(
-                            text = "Menu",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                        
-                        // Menu items
-                        MenuItem(
-                            text = "Manage Dictionaries",
-                            onClick = {
-                                sidebarOpen = false
-                                launchDictionaryManagement()
-                            }
-                        )
-                        
-                        MenuItem(
-                            text = "App Filter Settings",
-                            onClick = {
-                                sidebarOpen = false
-                                launchAppFilterSettings()
-                            }
-                        )
-                        
-                        MenuItem(
-                            text = "Text-to-Speech Settings",
-                            onClick = {
-                                sidebarOpen = false
-                                launchTtsSettings()
-                            }
-                        )
-                        
-                        MenuItem(
-                            text = "Toggle Word Underlining",
-                            onClick = {
-                                sidebarOpen = false
-                                toggleWordUnderlining()
-                            }
-                        )
-                        
-                        Spacer(modifier = Modifier.weight(1f))
-                        
-                        // Close button
-                        OutlinedButton(
-                            onClick = { sidebarOpen = false },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Close")
-                        }
-                    }
+                    
+                    BottomNavigation(
+                        currentRoute = currentRoute,
+                        onNavigate = { route -> currentRoute = route },
+                        modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
+                    )
                 }
             }
         }
     }
+    
     private fun requestOverlayPermission() {
         if (!Settings.canDrawOverlays(this)) {
             val intent = Intent(
@@ -625,18 +183,8 @@ class MainActivity : ComponentActivity() {
         startActivity(intent)
     }
     
-    private fun launchDebugScreen() {
-        val intent = Intent(this, DictionaryDebugActivity::class.java)
-        startActivity(intent)
-    }
-    
     private fun launchDictionaryManagement() {
         val intent = Intent(this, DictionaryManagementActivity::class.java)
-        startActivity(intent)
-    }
-    
-    private fun launchGestureTestActivity() {
-        val intent = Intent(this, com.godtap.dictionary.ui.GestureTestActivity::class.java)
         startActivity(intent)
     }
     
@@ -648,26 +196,5 @@ class MainActivity : ComponentActivity() {
     private fun launchTtsSettings() {
         val intent = Intent(this, com.godtap.dictionary.ui.TtsSettingsActivity::class.java)
         startActivity(intent)
-    }
-    
-    private fun testPopup() {
-        // Test the popup with a sample Japanese word
-        val testWord = "食べる (たべる)"
-        val testTranslation = "[verb]\nto eat, to consume\n\n例文 (example):\n私は寿司を食べる\nI eat sushi"
-        overlayManager.showPopup(testWord, testTranslation)
-    }
-    
-    private fun showTestText() {
-        // Open a test activity with Japanese text
-        val intent = Intent(this, TestActivity::class.java)
-        startActivity(intent)
-    }
-    
-    private fun toggleWordUnderlining() {
-        val sharedPreferences = getSharedPreferences("dictionary_prefs", MODE_PRIVATE)
-        val current = sharedPreferences.getBoolean("underline_enabled", false)
-        sharedPreferences.edit().putBoolean("underline_enabled", !current).apply()
-        val message = if (!current) "Word underlining enabled" else "Word underlining disabled"
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 }
