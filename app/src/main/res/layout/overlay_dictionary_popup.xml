@@ -134,6 +134,17 @@
                 android:layout_height="1dp"
                 android:background="#E0E0E0" />
 
+            <!-- Ad Container (for free tier users) -->
+            <LinearLayout
+                android:id="@+id/adContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:visibility="gone">
+                <!-- AdView will be added programmatically here -->
+            </LinearLayout>
+
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -146,7 +157,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_centerInParent="true"
-                    android:text="GodTap Dictionary"
+                    android:text="TapDictionary"
                     android:textSize="11sp"
                     android:textColor="#999999"
                     android:gravity="center" />

@@ -100,6 +100,12 @@ dependencies {
     // Flexbox Layout for clickable sentence wrapping
     implementation("com.google.android.flexbox:flexbox:3.0.0")
     
+    // Google Play Billing (In-App Purchases)
+    implementation("com.android.billingclient:billing-ktx:6.1.0")
+    
+    // Google AdMob (Ads for free tier)
+    implementation("com.google.android.gms:play-services-ads:22.6.0")
+    
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
