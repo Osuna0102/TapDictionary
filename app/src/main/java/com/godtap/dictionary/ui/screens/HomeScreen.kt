@@ -171,13 +171,17 @@ fun HomeScreen(
                     null
                 }
                 
+                // Get first sense for enhanced data (examples, notes, etc.)
+                val firstSense = entry.senses.firstOrNull()
+                
                 // Show popup using OverlayManager
                 overlayManager.showPopup(
                     word = word,
                     translation = translation,
                     lookupCount = entry.lookupCount,
                     sourceLanguage = fromLanguage,
-                    partOfSpeech = posDisplay
+                    partOfSpeech = posDisplay,
+                    sense = firstSense  // Pass full sense object for enhanced data
                 )
                 
                 // Refresh recent lookups after search

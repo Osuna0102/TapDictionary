@@ -344,6 +344,29 @@ class OverlayManager(private val context: Context) {
                     }
                 }
                 
+                // Toggle info button to show/hide enhanced sections
+                view.findViewById<View>(R.id.toggleInfoButton)?.apply {
+                    var enhancedSectionsVisible = true
+                    setOnClickListener {
+                        enhancedSectionsVisible = !enhancedSectionsVisible
+                        Log.d(TAG, "Toggle info button clicked, showing: $enhancedSectionsVisible")
+                        
+                        val visibility = if (enhancedSectionsVisible) View.VISIBLE else View.GONE
+                        view.findViewById<View>(R.id.examplesContainer)?.visibility = visibility
+                        view.findViewById<View>(R.id.notesContainer)?.visibility = visibility
+                        view.findViewById<View>(R.id.referencesContainer)?.visibility = visibility
+                        view.findViewById<View>(R.id.antonymsContainer)?.visibility = visibility
+                        view.findViewById<View>(R.id.etymologyContainer)?.visibility = visibility
+                        
+                        // Change icon tint to indicate state
+                        val tint = if (enhancedSectionsVisible) 
+                            context.getColor(android.R.color.holo_blue_dark) 
+                        else 
+                            context.getColor(android.R.color.darker_gray)
+                        (this as? android.widget.ImageView)?.setColorFilter(tint)
+                    }
+                }
+                
                 // Add "Back to Phrase" button if we came from a phrase lookup
                 if (depth > 0 && lastPhraseLookup != null) {
                     // Show a back button in the translation text area
@@ -619,10 +642,24 @@ class OverlayManager(private val context: Context) {
             hasAnyEnhancedData = true
             val examplesContainer = view.findViewById<LinearLayout>(R.id.examplesContainer)
             val examplesList = view.findViewById<LinearLayout>(R.id.examplesList)
+            val examplesTtsButton = view.findViewById<android.widget.ImageView>(R.id.examplesTtsButton)
             examplesContainer?.visibility = View.VISIBLE
             examplesList?.removeAllViews()
             
             Log.d(TAG, "Populating ${sense.examples.size} examples")
+            
+            // Set up TTS button for examples - reads first example
+            examplesTtsButton?.setOnClickListener {
+                val firstExample = sense.examples.firstOrNull()
+                if (firstExample != null) {
+                    Log.d(TAG, "Example TTS clicked: ${firstExample.source}")
+                    val success = ttsManager.speak(firstExample.source, currentLanguage)
+                    if (!success) {
+                        Log.w(TAG, "TTS failed for example")
+                    }
+                }
+            }
+            
             for ((index, example) in sense.examples.take(3).withIndex()) {  // Limit to 3 examples
                 val exampleView = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -724,8 +761,9 @@ class OverlayManager(private val context: Context) {
             antonymsContainer?.visibility = View.VISIBLE
             antonymsList?.removeAllViews()
             
-            Log.d(TAG, "Populating ${sense.antonyms.size} antonyms")
+            Log.d(TAG, "✓ Populating ${sense.antonyms.size} antonyms")
             for (ant in sense.antonyms) {
+                Log.d(TAG, "  - Antonym: ${ant.text} (href: ${ant.href})")
                 val antChip = TextView(context).apply {
                     text = ant.text
                     textSize = 12f
@@ -770,11 +808,12 @@ class OverlayManager(private val context: Context) {
         }
         
         // Show/hide toggle button based on whether we have any enhanced data
-        val toggleButton = view.findViewById<View>(R.id.toggleInfoButton)
+        val toggleButton = view.findViewById<android.widget.ImageView>(R.id.toggleInfoButton)
         if (hasAnyEnhancedData) {
             toggleButton?.visibility = View.VISIBLE
-            // Initially show all enhanced sections
-            // TODO: Add toggle functionality to show/hide all sections
+            // Set initial state - blue tint indicates sections are visible
+            toggleButton?.setColorFilter(context.getColor(android.R.color.holo_blue_dark))
+            Log.d(TAG, "Enhanced data populated, toggle button enabled")
         } else {
             toggleButton?.visibility = View.GONE
         }

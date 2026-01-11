@@ -136,14 +136,36 @@
                         android:background="@drawable/example_background"
                         android:visibility="gone">
 
-                        <TextView
+                        <RelativeLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="📚 Examples"
-                            android:textSize="12sp"
-                            android:textColor="#666666"
-                            android:textStyle="bold"
-                            android:paddingBottom="8dp" />
+                            android:paddingBottom="8dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentStart="true"
+                                android:layout_centerVertical="true"
+                                android:text="📚 Examples"
+                                android:textSize="12sp"
+                                android:textColor="#666666"
+                                android:textStyle="bold" />
+
+                            <ImageView
+                                android:id="@+id/examplesTtsButton"
+                                android:layout_width="24dp"
+                                android:layout_height="24dp"
+                                android:layout_alignParentEnd="true"
+                                android:layout_centerVertical="true"
+                                android:src="@drawable/ic_speaker"
+                                android:padding="4dp"
+                                android:clickable="true"
+                                android:focusable="true"
+                                android:background="?attr/selectableItemBackgroundBorderless"
+                                android:tint="#0066CC"
+                                android:contentDescription="Pronounce example" />
+
+                        </RelativeLayout>
 
                         <LinearLayout
                             android:id="@+id/examplesList"

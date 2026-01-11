@@ -387,7 +387,9 @@ class JMdictParser {
                 antonyms = antonyms,
                 infoGlossary = infoGlossary.filter { it.isNotBlank() },
                 sourceLanguages = sourceLanguages.filter { it.isNotBlank() }
-            )
+            ).also {
+                Log.d("JMdictParser", "✓ Parsed structured content: ${it.glosses.size} glosses, ${it.examples.size} examples, ${it.notes.size} notes, ${it.references.size} references, ${it.antonyms.size} antonyms")
+            }
         } catch (e: Exception) {
             Log.w("JMdictParser", "Failed to parse structured content: ${e.message}")
             // Fallback: return as single string in glosses
@@ -462,6 +464,7 @@ class JMdictParser {
                     if (tag == "ol" || tag == "ul") {
                         Log.d("JMdictParser", "✓ Found antonyms list")
                         extractReferencesFromList(contentObj["content"] as? kotlinx.serialization.json.JsonArray, antonyms)
+                        Log.d("JMdictParser", "  Extracted ${antonyms.size} antonyms so far")
                     }
                 }
                 "infoGlossary" -> {
@@ -593,29 +596,38 @@ class JMdictParser {
                 
                 when (liContent) {
                     is kotlinx.serialization.json.JsonArray -> {
-                        // Look for link tags
+                        // Complex case: content is array of mixed types (strings + links + spans)
+                        // Example: ["antonym: ", {"tag":"a","content":"word","href":"..."}, {...}]
                         for (contentPart in liContent) {
-                            if (contentPart is kotlinx.serialization.json.JsonObject) {
-                                val linkTag = (contentPart["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                                if (linkTag == "a") {
-                                    val text = (contentPart["content"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
-                                    val href = (contentPart["href"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
-                                    if (text.isNotBlank()) {
-                                        references.add(Pair(text, href))
-                                        Log.d("JMdictParser", "  ✓ Extracted reference: '$text' (href=$href)")
+                            when (contentPart) {
+                                is kotlinx.serialization.json.JsonObject -> {
+                                    val partTag = (contentPart["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                                    if (partTag == "a") {
+                                        // This is a link - extract text and href
+                                        val text = (contentPart["content"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                                        val href = (contentPart["href"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                                        if (text.isNotBlank()) {
+                                            references.add(Pair(text, href))
+                                            Log.d("JMdictParser", "  ✓ Extracted reference/antonym: '$text' (href=$href)")
+                                        }
                                     }
                                 }
-                            } else if (contentPart is kotlinx.serialization.json.JsonPrimitive) {
-                                // Plain text reference
-                                val text = contentPart.content.trim()
-                                if (text.isNotBlank()) {
-                                    references.add(Pair(text, ""))
+                                is kotlinx.serialization.json.JsonPrimitive -> {
+                                    // Skip plain text prefixes like "antonym: " or "see also: "
+                                    val text = contentPart.content.trim()
+                                    if (text.isNotBlank() && !text.endsWith(":")) {
+                                        // Only add if it's not a prefix
+                                        references.add(Pair(text, ""))
+                                    }
+                                }
+                                else -> {
+                                    // JsonArray or other types - ignore
                                 }
                             }
                         }
                     }
                     is kotlinx.serialization.json.JsonPrimitive -> {
-                        // Plain text reference
+                        // Simple case: plain text reference
                         val text = liContent.content.trim()
                         if (text.isNotBlank()) {
                             references.add(Pair(text, ""))

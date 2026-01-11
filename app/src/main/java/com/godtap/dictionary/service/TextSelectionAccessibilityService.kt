@@ -223,8 +223,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
             if (info.eventTypes and AccessibilityEvent.TYPE_VIEW_CLICKED != 0) eventTypeNames.add("TYPE_VIEW_CLICKED")
             if (info.eventTypes and AccessibilityEvent.TYPE_VIEW_LONG_CLICKED != 0) eventTypeNames.add("TYPE_VIEW_LONG_CLICKED")
             if (info.eventTypes and AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED != 0) eventTypeNames.add("TYPE_VIEW_TEXT_SELECTION_CHANGED")
-            if (info.eventTypes and AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED != 0) eventTypeNames.add("TYPE_WINDOW_STATE_CHANGED")
-            if (info.eventTypes and AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED != 0) eventTypeNames.add("TYPE_WINDOW_CONTENT_CHANGED")
+            // if (info.eventTypes and AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED != 0) eventTypeNames.add("TYPE_WINDOW_STATE_CHANGED")
+            // if (info.eventTypes and AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED != 0) eventTypeNames.add("TYPE_WINDOW_CONTENT_CHANGED")
             if (info.eventTypes and AccessibilityEvent.TYPE_VIEW_SCROLLED != 0) eventTypeNames.add("TYPE_VIEW_SCROLLED")
             if (info.eventTypes and AccessibilityEvent.TYPE_GESTURE_DETECTION_START != 0) eventTypeNames.add("TYPE_GESTURE_DETECTION_START")
             if (info.eventTypes and AccessibilityEvent.TYPE_GESTURE_DETECTION_END != 0) eventTypeNames.add("TYPE_GESTURE_DETECTION_END")
@@ -569,10 +569,16 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                         if (LanguageDetector.matchesLanguage(text, sourceLang)) {
                             Log.d(TAG, "$sourceLang text detected in click (length ${text.length}): ${text.take(50)}...")
                             
-                            // For Japanese text longer than 50 chars, skip click processing
-                            // and wait for actual text selection event (which is more accurate)
-                            if (sourceLang == "ja" && text.length > 50) {
-                                Log.d(TAG, "⊘ Skipping long Japanese text in click - waiting for selection event")
+                            // ENHANCED: Skip processing if this is a click on full text rather than a selection
+                            // Check if the text is suspiciously long (likely full sentence/paragraph)
+                            val isLikelyFullText = when (sourceLang) {
+                                "ja", "ko", "zh" -> text.length > 30  // CJK languages - shorter threshold
+                                else -> text.length > 100  // Space-delimited languages
+                            }
+                            
+                            if (isLikelyFullText) {
+                                Log.d(TAG, "⊘ Skipping: Text too long (${text.length} chars), likely full paragraph not selection")
+                                Log.d(TAG, "   Waiting for actual text selection event...")
                                 return@launch
                             }
                             
