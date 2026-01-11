@@ -98,6 +98,24 @@ data class ReadingElement(
 )
 
 /**
+ * Example sentence with source and translation
+ */
+@Serializable
+data class ExampleSentence(
+    val source: String,      // Original sentence (e.g., Japanese)
+    val translation: String  // Translated sentence (e.g., English)
+)
+
+/**
+ * Reference to a related word
+ */
+@Serializable
+data class WordReference(
+    val text: String,        // Display text
+    val href: String = ""    // Link reference (if available)
+)
+
+/**
  * Sense (meaning with context)
  */
 @Serializable
@@ -109,7 +127,14 @@ data class Sense(
     val dialects: List<String> = emptyList(), // Dialect info
     val info: List<String> = emptyList(),    // Additional info
     val languageSource: List<String> = emptyList(), // Loanword source
-    val restrictions: List<String> = emptyList() // Restricted to specific readings
+    val restrictions: List<String> = emptyList(), // Restricted to specific readings
+    // NEW: Enhanced data fields
+    val examples: List<ExampleSentence> = emptyList(), // Example sentences
+    val notes: List<String> = emptyList(),             // Usage notes
+    val references: List<WordReference> = emptyList(), // Related words
+    val antonyms: List<WordReference> = emptyList(),   // Antonyms
+    val infoGlossary: List<String> = emptyList(),      // Additional glossary info
+    val sourceLanguages: List<String> = emptyList()    // Etymology info
 )
 
 /**

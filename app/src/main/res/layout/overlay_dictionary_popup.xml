@@ -123,7 +123,160 @@
                         android:paddingEnd="20dp"
                         android:paddingBottom="16dp" />
 
-                    <!-- Example Section (if provided) -->
+                    <!-- Enhanced Example Sentences Section -->
+                    <LinearLayout
+                        android:id="@+id/examplesContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginStart="20dp"
+                        android:layout_marginEnd="20dp"
+                        android:layout_marginBottom="12dp"
+                        android:padding="14dp"
+                        android:background="@drawable/example_background"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="📚 Examples"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textStyle="bold"
+                            android:paddingBottom="8dp" />
+
+                        <LinearLayout
+                            android:id="@+id/examplesList"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical" />
+
+                    </LinearLayout>
+
+                    <!-- Notes Section -->
+                    <LinearLayout
+                        android:id="@+id/notesContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginStart="20dp"
+                        android:layout_marginEnd="20dp"
+                        android:layout_marginBottom="12dp"
+                        android:padding="14dp"
+                        android:background="@drawable/example_background"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="📝 Usage Notes"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textStyle="bold"
+                            android:paddingBottom="8dp" />
+
+                        <LinearLayout
+                            android:id="@+id/notesList"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical" />
+
+                    </LinearLayout>
+
+                    <!-- References Section -->
+                    <LinearLayout
+                        android:id="@+id/referencesContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginStart="20dp"
+                        android:layout_marginEnd="20dp"
+                        android:layout_marginBottom="12dp"
+                        android:padding="14dp"
+                        android:background="@drawable/example_background"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="🔗 Related Words"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textStyle="bold"
+                            android:paddingBottom="8dp" />
+
+                        <com.google.android.flexbox.FlexboxLayout
+                            android:id="@+id/referencesList"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:flexWrap="wrap"
+                            app:justifyContent="flex_start" />
+
+                    </LinearLayout>
+
+                    <!-- Antonyms Section -->
+                    <LinearLayout
+                        android:id="@+id/antonymsContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginStart="20dp"
+                        android:layout_marginEnd="20dp"
+                        android:layout_marginBottom="12dp"
+                        android:padding="14dp"
+                        android:background="@drawable/example_background"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="↔️ Antonyms"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textStyle="bold"
+                            android:paddingBottom="8dp" />
+
+                        <com.google.android.flexbox.FlexboxLayout
+                            android:id="@+id/antonymsList"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:flexWrap="wrap"
+                            app:justifyContent="flex_start" />
+
+                    </LinearLayout>
+
+                    <!-- Etymology/Source Language Section -->
+                    <LinearLayout
+                        android:id="@+id/etymologyContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginStart="20dp"
+                        android:layout_marginEnd="20dp"
+                        android:layout_marginBottom="12dp"
+                        android:padding="14dp"
+                        android:background="@drawable/example_background"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="🌐 Etymology"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textStyle="bold"
+                            android:paddingBottom="8dp" />
+
+                        <TextView
+                            android:id="@+id/etymologyText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textSize="14sp"
+                            android:textColor="#666666" />
+
+                    </LinearLayout>
+
+                    <!-- Legacy Example Section (keep for backward compatibility) -->
                     <LinearLayout
                         android:id="@+id/exampleSection"
                         android:layout_width="match_parent"
@@ -248,6 +401,21 @@
                         android:layout_marginEnd="8dp"
                         android:tint="#666666"
                         android:contentDescription="Copy word" />
+
+                    <!-- Toggle Examples/Info Button -->
+                    <ImageView
+                        android:id="@+id/toggleInfoButton"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@drawable/ic_info"
+                        android:padding="8dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:background="@drawable/action_button_transparent"
+                        android:layout_marginEnd="8dp"
+                        android:tint="#666666"
+                        android:visibility="gone"
+                        android:contentDescription="Toggle extra info" />
 
                 </LinearLayout>
 

@@ -124,9 +124,10 @@ class OverlayManager(private val context: Context) {
         fullSentence: String? = null,
         depth: Int = 0,
         partOfSpeech: String? = null,
-        example: String? = null
+        example: String? = null,
+        sense: com.godtap.dictionary.database.Sense? = null  // NEW: Full sense object with all data
     ) {
-        Log.d(TAG, "showPopup() called for: $word (count: $lookupCount), language: $sourceLanguage, depth: $depth")
+        Log.d(TAG, "showPopup() called for: $word (count: $lookupCount), language: $sourceLanguage, depth: $depth, hasEnhancedData: ${sense != null}")
         
         // Check depth limit
         if (depth >= MAX_POPUP_DEPTH) {
@@ -253,6 +254,19 @@ class OverlayManager(private val context: Context) {
                     exampleSection.visibility = View.VISIBLE
                 } else {
                     exampleSection.visibility = View.GONE
+                }
+                
+                // ENHANCED: Populate ALL data sections if sense object is provided
+                if (sense != null) {
+                    populateEnhancedData(view, sense)
+                } else {
+                    // Hide all enhanced sections if no data
+                    view.findViewById<View>(R.id.examplesContainer)?.visibility = View.GONE
+                    view.findViewById<View>(R.id.notesContainer)?.visibility = View.GONE
+                    view.findViewById<View>(R.id.referencesContainer)?.visibility = View.GONE
+                    view.findViewById<View>(R.id.antonymsContainer)?.visibility = View.GONE
+                    view.findViewById<View>(R.id.etymologyContainer)?.visibility = View.GONE
+                    view.findViewById<View>(R.id.toggleInfoButton)?.visibility = View.GONE
                 }
                 
                 // Show clickable sentence section if fullSentence is provided
@@ -591,6 +605,178 @@ class OverlayManager(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Error showing clickable sentence popup", e)
             }
+        }
+    }
+    
+    /**
+     * Populate enhanced data sections (examples, notes, references, etc.)
+     */
+    private fun populateEnhancedData(view: View, sense: com.godtap.dictionary.database.Sense) {
+        var hasAnyEnhancedData = false
+        
+        // Examples
+        if (sense.examples.isNotEmpty()) {
+            hasAnyEnhancedData = true
+            val examplesContainer = view.findViewById<LinearLayout>(R.id.examplesContainer)
+            val examplesList = view.findViewById<LinearLayout>(R.id.examplesList)
+            examplesContainer?.visibility = View.VISIBLE
+            examplesList?.removeAllViews()
+            
+            Log.d(TAG, "Populating ${sense.examples.size} examples")
+            for ((index, example) in sense.examples.take(3).withIndex()) {  // Limit to 3 examples
+                val exampleView = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, if (index > 0) 12 else 0, 0, 0)
+                }
+                
+                // Source sentence (Japanese, etc.)
+                val sourceText = TextView(context).apply {
+                    text = example.source
+                    textSize = 14f
+                    setTextColor(context.getColor(android.R.color.black))
+                }
+                exampleView.addView(sourceText)
+                
+                // Translation (English, etc.)
+                val translationText = TextView(context).apply {
+                    text = "→ ${example.translation}"
+                    textSize = 13f
+                    setTextColor(context.getColor(android.R.color.darker_gray))
+                    setPadding(0, 4, 0, 0)
+                }
+                exampleView.addView(translationText)
+                
+                examplesList?.addView(exampleView)
+            }
+        } else {
+            view.findViewById<View>(R.id.examplesContainer)?.visibility = View.GONE
+        }
+        
+        // Notes
+        if (sense.notes.isNotEmpty()) {
+            hasAnyEnhancedData = true
+            val notesContainer = view.findViewById<LinearLayout>(R.id.notesContainer)
+            val notesList = view.findViewById<LinearLayout>(R.id.notesList)
+            notesContainer?.visibility = View.VISIBLE
+            notesList?.removeAllViews()
+            
+            Log.d(TAG, "Populating ${sense.notes.size} notes")
+            for (note in sense.notes) {
+                val noteText = TextView(context).apply {
+                    text = "• $note"
+                    textSize = 13f
+                    setTextColor(context.getColor(android.R.color.darker_gray))
+                    setPadding(0, 0, 0, 8)
+                }
+                notesList?.addView(noteText)
+            }
+        } else {
+            view.findViewById<View>(R.id.notesContainer)?.visibility = View.GONE
+        }
+        
+        // References
+        if (sense.references.isNotEmpty()) {
+            hasAnyEnhancedData = true
+            val referencesContainer = view.findViewById<LinearLayout>(R.id.referencesContainer)
+            val referencesList = view.findViewById<FlexboxLayout>(R.id.referencesList)
+            referencesContainer?.visibility = View.VISIBLE
+            referencesList?.removeAllViews()
+            
+            Log.d(TAG, "Populating ${sense.references.size} references")
+            for (ref in sense.references.take(8)) {  // Limit to 8 references
+                val refChip = TextView(context).apply {
+                    text = ref.text
+                    textSize = 12f
+                    setTextColor(context.getColor(android.R.color.holo_blue_dark))
+                    setPadding(12, 6, 12, 6)
+                    background = context.getDrawable(R.drawable.badge_background)
+                    
+                    // Make clickable if we have href
+                    if (ref.href.isNotBlank()) {
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            // Look up the referenced word
+                            onWordClickCallback?.invoke(ref.text, currentLanguage, currentPopupDepth + 1)
+                        }
+                    }
+                }
+                
+                val layoutParams = FlexboxLayout.LayoutParams(
+                    FlexboxLayout.LayoutParams.WRAP_CONTENT,
+                    FlexboxLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 8, 8)
+                }
+                refChip.layoutParams = layoutParams
+                
+                referencesList?.addView(refChip)
+            }
+        } else {
+            view.findViewById<View>(R.id.referencesContainer)?.visibility = View.GONE
+        }
+        
+        // Antonyms
+        if (sense.antonyms.isNotEmpty()) {
+            hasAnyEnhancedData = true
+            val antonymsContainer = view.findViewById<LinearLayout>(R.id.antonymsContainer)
+            val antonymsList = view.findViewById<FlexboxLayout>(R.id.antonymsList)
+            antonymsContainer?.visibility = View.VISIBLE
+            antonymsList?.removeAllViews()
+            
+            Log.d(TAG, "Populating ${sense.antonyms.size} antonyms")
+            for (ant in sense.antonyms) {
+                val antChip = TextView(context).apply {
+                    text = ant.text
+                    textSize = 12f
+                    setTextColor(context.getColor(android.R.color.holo_red_dark))
+                    setPadding(12, 6, 12, 6)
+                    background = context.getDrawable(R.drawable.badge_background)
+                    
+                    // Make clickable
+                    if (ant.href.isNotBlank()) {
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            onWordClickCallback?.invoke(ant.text, currentLanguage, currentPopupDepth + 1)
+                        }
+                    }
+                }
+                
+                val layoutParams = FlexboxLayout.LayoutParams(
+                    FlexboxLayout.LayoutParams.WRAP_CONTENT,
+                    FlexboxLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 8, 8)
+                }
+                antChip.layoutParams = layoutParams
+                
+                antonymsList?.addView(antChip)
+            }
+        } else {
+            view.findViewById<View>(R.id.antonymsContainer)?.visibility = View.GONE
+        }
+        
+        // Etymology / Source Languages
+        if (sense.sourceLanguages.isNotEmpty()) {
+            hasAnyEnhancedData = true
+            val etymologyContainer = view.findViewById<LinearLayout>(R.id.etymologyContainer)
+            val etymologyText = view.findViewById<TextView>(R.id.etymologyText)
+            etymologyContainer?.visibility = View.VISIBLE
+            etymologyText?.text = sense.sourceLanguages.joinToString("\n")
+            Log.d(TAG, "Populating etymology: ${sense.sourceLanguages.joinToString()}")
+        } else {
+            view.findViewById<View>(R.id.etymologyContainer)?.visibility = View.GONE
+        }
+        
+        // Show/hide toggle button based on whether we have any enhanced data
+        val toggleButton = view.findViewById<View>(R.id.toggleInfoButton)
+        if (hasAnyEnhancedData) {
+            toggleButton?.visibility = View.VISIBLE
+            // Initially show all enhanced sections
+            // TODO: Add toggle functionality to show/hide all sections
+        } else {
+            toggleButton?.visibility = View.GONE
         }
     }
     

@@ -569,6 +569,13 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                         if (LanguageDetector.matchesLanguage(text, sourceLang)) {
                             Log.d(TAG, "$sourceLang text detected in click (length ${text.length}): ${text.take(50)}...")
                             
+                            // For Japanese text longer than 50 chars, skip click processing
+                            // and wait for actual text selection event (which is more accurate)
+                            if (sourceLang == "ja" && text.length > 50) {
+                                Log.d(TAG, "⊘ Skipping long Japanese text in click - waiting for selection event")
+                                return@launch
+                            }
+                            
                             // Check if this app has unreliable position tracking (like WhatsApp)
                             val hasUnreliablePositioning = isAppWithUnreliablePositioning(event.packageName.toString())
                             
@@ -954,6 +961,9 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 val rawGlosses = entry.getAllGlosses()
                 val partsOfSpeech = entry.getPartsOfSpeech()
                 
+                // Get first sense for enhanced data (examples, notes, etc.)
+                val firstSense = entry.senses.firstOrNull()
+                
                 // Parse Yomichan structured content (JSON format)
                 val glosses = rawGlosses.map { parseYomichanGloss(it) }
                 
@@ -978,7 +988,17 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     append(glosses.joinToString("; "))
                 }
                 
-                overlayManager.showPopup(wordDisplay, translation, entry.lookupCount + 1, x, y, languageCode, null, depth)
+                overlayManager.showPopup(
+                    wordDisplay, 
+                    translation, 
+                    entry.lookupCount + 1, 
+                    x, 
+                    y, 
+                    languageCode, 
+                    null, 
+                    depth,
+                    sense = firstSense  // ENHANCED: Pass full sense object
+                )
             } else {
                 Log.d(TAG, "⊘ No dictionary entry found for '$word'")
                 
@@ -1071,6 +1091,9 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     val rawGlosses = entry.getAllGlosses()
                     val partsOfSpeech = entry.getPartsOfSpeech()
                     
+                    // Get first sense for enhanced data
+                    val firstSense = entry.senses.firstOrNull()
+                    
                     // Parse Yomichan structured content (JSON format)
                     val glosses = rawGlosses.map { parseYomichanGloss(it) }
                     
@@ -1100,7 +1123,17 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                     
                     // Pass lookup count + 1 (since we just incremented it in the repository)
                     Log.d(TAG, "  Displaying with lookupCount: ${entry.lookupCount + 1} (entry.lookupCount=${entry.lookupCount} + 1)")
-                    overlayManager.showPopup(wordDisplay, translation, entry.lookupCount + 1, x, y, languageCode, fullSentence, depth = 0)
+                    overlayManager.showPopup(
+                        wordDisplay, 
+                        translation, 
+                        entry.lookupCount + 1, 
+                        x, 
+                        y, 
+                        languageCode, 
+                        fullSentence, 
+                        depth = 0,
+                        sense = firstSense  // ENHANCED: Pass full sense object
+                    )
                 } else {
                     Log.d(TAG, "⊘ No dictionary entry found from position $startPosition: '$textToLookup'")
                     

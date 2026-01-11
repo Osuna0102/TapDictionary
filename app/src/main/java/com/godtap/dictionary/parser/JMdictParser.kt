@@ -181,6 +181,20 @@ class JMdictParser {
             listOf(glossesJson.toString().trim('"'))
         }
         
+        // ENHANCED: Parse structured content to extract examples, notes, references, etc.
+        val structuredData = try {
+            when {
+                glossesJson == null -> StructuredContentData(glosses = glosses)
+                else -> parseStructuredContentEnhanced(glossesJson)
+            }
+        } catch (e: Exception) {
+            Log.w("JMdictParser", "Failed to extract enhanced data: ${e.message}")
+            StructuredContentData(glosses = glosses)
+        }
+        
+        // Use enhanced data if available, otherwise fall back to basic glosses
+        val finalGlosses = structuredData.glosses.ifEmpty { glosses }
+        
         // Parse kanji elements
         val kanjiElements = if (expression.isNotEmpty() && expression != reading) {
             listOf(KanjiElement(
@@ -201,11 +215,24 @@ class JMdictParser {
         // Parse parts of speech from rules
         val partsOfSpeech = parseRulesToPOS(rules)
         
-        // Create sense
+        // Create sense with ALL extracted data
         val senses = listOf(Sense(
-            glosses = glosses,
+            glosses = finalGlosses,
             partsOfSpeech = partsOfSpeech,
-            misc = if (termTags.isNotEmpty()) listOf(termTags) else emptyList()
+            misc = if (termTags.isNotEmpty()) listOf(termTags) else emptyList(),
+            // NEW: Enhanced data fields
+            examples = structuredData.examples.map { (source, translation) ->
+                com.godtap.dictionary.database.ExampleSentence(source, translation)
+            },
+            notes = structuredData.notes,
+            references = structuredData.references.map { (text, href) ->
+                com.godtap.dictionary.database.WordReference(text, href)
+            },
+            antonyms = structuredData.antonyms.map { (text, href) ->
+                com.godtap.dictionary.database.WordReference(text, href)
+            },
+            infoGlossary = structuredData.infoGlossary,
+            sourceLanguages = structuredData.sourceLanguages
         ))
         
         // Calculate frequency
@@ -250,8 +277,21 @@ class JMdictParser {
     }
     
     /**
-     * Parse structured content to extract only target language definitions
-     * Filters out example sentences and source language text
+     * Comprehensive structured content parsing result
+     */
+    private data class StructuredContentData(
+        val glosses: List<String> = emptyList(),
+        val examples: List<Pair<String, String>> = emptyList(), // (source, translation)
+        val notes: List<String> = emptyList(),
+        val references: List<Pair<String, String>> = emptyList(), // (text, href)
+        val antonyms: List<Pair<String, String>> = emptyList(),
+        val infoGlossary: List<String> = emptyList(),
+        val sourceLanguages: List<String> = emptyList()
+    )
+
+    /**
+     * Parse structured content to extract ALL available data types
+     * Now returns comprehensive dictionary data including examples, notes, references, etc.
      */
     private fun parseStructuredContent(glossesJson: kotlinx.serialization.json.JsonElement): List<String> {
         try {
@@ -259,7 +299,7 @@ class JMdictParser {
             
             // Check if it's structured content format
             if (!jsonString.contains("structured-content")) {
-                // Regular glosses format
+                // Regular glosses format (plain strings)
                 return when {
                     jsonString.startsWith("[") -> {
                         json.decodeFromString<List<String>>(jsonString)
@@ -278,25 +318,8 @@ class JMdictParser {
             for (structuredItem in structuredArray) {
                 val content = structuredItem["content"] as? kotlinx.serialization.json.JsonArray ?: continue
                 
-                // Navigate through the nested structure to find glosses
-                for (contentItem in content) {
-                    val contentObj = contentItem as? kotlinx.serialization.json.JsonObject ?: continue
-                    val tag = (contentObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                    
-                    // Look for "ol" (ordered list) with "glosses" data
-                    if (tag == "ol") {
-                        val data = contentObj["data"] as? kotlinx.serialization.json.JsonObject
-                        val dataContent = (data?.get("content") as? kotlinx.serialization.json.JsonPrimitive)?.content
-                        
-                        if (dataContent == "glosses") {
-                            // Extract the actual definitions from list items
-                            val listContent = contentObj["content"] as? kotlinx.serialization.json.JsonArray
-                            listContent?.let { list ->
-                                extractDefinitionsFromList(list, definitions)
-                            }
-                        }
-                    }
-                }
+                // Recursively search for glossary/glosses lists in the nested structure
+                extractGlossaryFromContent(content, definitions)
             }
             
             return definitions.filter { it.isNotBlank() }
@@ -308,9 +331,355 @@ class JMdictParser {
     }
     
     /**
-     * Extract definitions from structured content list
-     * Now includes example sentences formatted nicely
+     * ENHANCED: Parse structured content and extract ALL data types
+     * This method extracts glosses, examples, notes, references, antonyms, etc.
      */
+    private fun parseStructuredContentEnhanced(glossesJson: kotlinx.serialization.json.JsonElement): StructuredContentData {
+        val result = StructuredContentData()
+        
+        try {
+            val jsonString = glossesJson.toString()
+            
+            // Check if it's structured content format
+            if (!jsonString.contains("structured-content")) {
+                // Regular glosses format (plain strings)
+                val glosses = when {
+                    jsonString.startsWith("[") -> {
+                        json.decodeFromString<List<String>>(jsonString)
+                    }
+                    else -> listOf(jsonString.trim('"'))
+                }
+                return result.copy(glosses = glosses)
+            }
+            
+            // Parse as structured content
+            val structuredArray = json.decodeFromString<List<kotlinx.serialization.json.JsonObject>>(jsonString)
+            
+            val glosses = mutableListOf<String>()
+            val examples = mutableListOf<Pair<String, String>>()
+            val notes = mutableListOf<String>()
+            val references = mutableListOf<Pair<String, String>>()
+            val antonyms = mutableListOf<Pair<String, String>>()
+            val infoGlossary = mutableListOf<String>()
+            val sourceLanguages = mutableListOf<String>()
+            
+            for (structuredItem in structuredArray) {
+                val content = structuredItem["content"] as? kotlinx.serialization.json.JsonArray ?: continue
+                
+                // Extract all data types from the nested structure
+                extractAllDataTypes(
+                    content,
+                    glosses,
+                    examples,
+                    notes,
+                    references,
+                    antonyms,
+                    infoGlossary,
+                    sourceLanguages
+                )
+            }
+            
+            return StructuredContentData(
+                glosses = glosses.filter { it.isNotBlank() },
+                examples = examples,
+                notes = notes.filter { it.isNotBlank() },
+                references = references,
+                antonyms = antonyms,
+                infoGlossary = infoGlossary.filter { it.isNotBlank() },
+                sourceLanguages = sourceLanguages.filter { it.isNotBlank() }
+            )
+        } catch (e: Exception) {
+            Log.w("JMdictParser", "Failed to parse structured content: ${e.message}")
+            // Fallback: return as single string in glosses
+            return result.copy(glosses = listOf(glossesJson.toString().trim('"')))
+        }
+    }
+    
+    /**
+     * Recursively extract ALL data types from structured content
+     * Handles nested content arrays and identifies data types by data.content attribute
+     */
+    private fun extractAllDataTypes(
+        content: kotlinx.serialization.json.JsonArray,
+        glosses: MutableList<String>,
+        examples: MutableList<Pair<String, String>>,
+        notes: MutableList<String>,
+        references: MutableList<Pair<String, String>>,
+        antonyms: MutableList<Pair<String, String>>,
+        infoGlossary: MutableList<String>,
+        sourceLanguages: MutableList<String>
+    ) {
+        for (contentItem in content) {
+            val contentObj = contentItem as? kotlinx.serialization.json.JsonObject ?: continue
+            val tag = (contentObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            val data = contentObj["data"] as? kotlinx.serialization.json.JsonObject
+            val dataContent = (data?.get("content") as? kotlinx.serialization.json.JsonPrimitive)?.content
+            
+            // Check what type of list this is based on data.content attribute
+            when (dataContent) {
+                "glosses", "glossary" -> {
+                    // Main definitions
+                    if (tag == "ol" || tag == "ul") {
+                        Log.d("JMdictParser", "✓ Found glossary list")
+                        val listContent = contentObj["content"]
+                        when (listContent) {
+                            is kotlinx.serialization.json.JsonArray -> {
+                                extractDefinitionsFromList(listContent, glosses)
+                            }
+                            is kotlinx.serialization.json.JsonObject -> {
+                                val singleItemArray = kotlinx.serialization.json.JsonArray(listOf(listContent))
+                                extractDefinitionsFromList(singleItemArray, glosses)
+                            }
+                            else -> {
+                                // JsonPrimitive or null - ignore
+                            }
+                        }
+                    }
+                }
+                "examples" -> {
+                    // Example sentences (source + translation)
+                    if (tag == "ol" || tag == "ul") {
+                        Log.d("JMdictParser", "✓ Found examples list")
+                        extractExamplesFromList(contentObj["content"] as? kotlinx.serialization.json.JsonArray, examples)
+                    }
+                }
+                "notes" -> {
+                    // Usage notes
+                    if (tag == "ol" || tag == "ul") {
+                        Log.d("JMdictParser", "✓ Found notes list")
+                        extractTextListFromContent(contentObj["content"] as? kotlinx.serialization.json.JsonArray, notes)
+                    }
+                }
+                "references" -> {
+                    // Related words with links
+                    if (tag == "ol" || tag == "ul") {
+                        Log.d("JMdictParser", "✓ Found references list")
+                        extractReferencesFromList(contentObj["content"] as? kotlinx.serialization.json.JsonArray, references)
+                    }
+                }
+                "antonyms" -> {
+                    // Antonyms with links
+                    if (tag == "ol" || tag == "ul") {
+                        Log.d("JMdictParser", "✓ Found antonyms list")
+                        extractReferencesFromList(contentObj["content"] as? kotlinx.serialization.json.JsonArray, antonyms)
+                    }
+                }
+                "infoGlossary" -> {
+                    // Additional glossary info
+                    if (tag == "ol" || tag == "ul") {
+                        Log.d("JMdictParser", "✓ Found infoGlossary list")
+                        extractTextListFromContent(contentObj["content"] as? kotlinx.serialization.json.JsonArray, infoGlossary)
+                    }
+                }
+                "sourceLanguages" -> {
+                    // Etymology/source language info
+                    if (tag == "ol" || tag == "ul") {
+                        Log.d("JMdictParser", "✓ Found sourceLanguages list")
+                        extractTextListFromContent(contentObj["content"] as? kotlinx.serialization.json.JsonArray, sourceLanguages)
+                    }
+                }
+            }
+            
+            // Recurse into nested content arrays
+            val nestedContent = contentObj["content"] as? kotlinx.serialization.json.JsonArray
+            if (nestedContent != null && dataContent == null) {
+                // Only recurse if we haven't already processed this list
+                extractAllDataTypes(nestedContent, glosses, examples, notes, references, antonyms, infoGlossary, sourceLanguages)
+            }
+        }
+    }
+    
+    /**
+     * Extract example sentences from list (Japanese sentence + English translation)
+     */
+    private fun extractExamplesFromList(
+        list: kotlinx.serialization.json.JsonArray?,
+        examples: MutableList<Pair<String, String>>
+    ) {
+        if (list == null) return
+        
+        var sourceSentence = ""
+        for (item in list) {
+            val itemObj = item as? kotlinx.serialization.json.JsonObject ?: continue
+            val tag = (itemObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            
+            if (tag == "li") {
+                val liContent = itemObj["content"]
+                val lang = (itemObj["lang"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                
+                when (liContent) {
+                    is kotlinx.serialization.json.JsonPrimitive -> {
+                        val text = liContent.content.trim()
+                        if (text.isNotBlank()) {
+                            if (lang == "en") {
+                                // This is the translation - pair with previous source
+                                if (sourceSentence.isNotBlank()) {
+                                    examples.add(Pair(sourceSentence, text))
+                                    Log.d("JMdictParser", "  ✓ Extracted example: '$sourceSentence' → '$text'")
+                                    sourceSentence = ""
+                                }
+                            } else {
+                                // This is the source sentence (Japanese, etc.)
+                                sourceSentence = text
+                            }
+                        }
+                    }
+                    else -> {
+                        // JsonArray, JsonObject, or null - ignore
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Extract text list (for notes, infoGlossary, sourceLanguages)
+     */
+    private fun extractTextListFromContent(
+        list: kotlinx.serialization.json.JsonArray?,
+        output: MutableList<String>
+    ) {
+        if (list == null) return
+        
+        for (item in list) {
+            val itemObj = item as? kotlinx.serialization.json.JsonObject ?: continue
+            val tag = (itemObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            
+            if (tag == "li") {
+                val liContent = itemObj["content"]
+                
+                when (liContent) {
+                    is kotlinx.serialization.json.JsonPrimitive -> {
+                        val text = liContent.content.trim()
+                        if (text.isNotBlank()) {
+                            output.add(text)
+                            Log.d("JMdictParser", "  ✓ Extracted text: '$text'")
+                        }
+                    }
+                    is kotlinx.serialization.json.JsonArray -> {
+                        // Sometimes content is wrapped in array
+                        for (contentPart in liContent) {
+                            if (contentPart is kotlinx.serialization.json.JsonPrimitive) {
+                                val text = contentPart.content.trim()
+                                if (text.isNotBlank()) {
+                                    output.add(text)
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        // JsonObject or null - ignore
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Extract references/antonyms (words with optional links)
+     */
+    private fun extractReferencesFromList(
+        list: kotlinx.serialization.json.JsonArray?,
+        references: MutableList<Pair<String, String>>
+    ) {
+        if (list == null) return
+        
+        for (item in list) {
+            val itemObj = item as? kotlinx.serialization.json.JsonObject ?: continue
+            val tag = (itemObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            
+            if (tag == "li") {
+                val liContent = itemObj["content"]
+                
+                when (liContent) {
+                    is kotlinx.serialization.json.JsonArray -> {
+                        // Look for link tags
+                        for (contentPart in liContent) {
+                            if (contentPart is kotlinx.serialization.json.JsonObject) {
+                                val linkTag = (contentPart["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                                if (linkTag == "a") {
+                                    val text = (contentPart["content"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                                    val href = (contentPart["href"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: ""
+                                    if (text.isNotBlank()) {
+                                        references.add(Pair(text, href))
+                                        Log.d("JMdictParser", "  ✓ Extracted reference: '$text' (href=$href)")
+                                    }
+                                }
+                            } else if (contentPart is kotlinx.serialization.json.JsonPrimitive) {
+                                // Plain text reference
+                                val text = contentPart.content.trim()
+                                if (text.isNotBlank()) {
+                                    references.add(Pair(text, ""))
+                                }
+                            }
+                        }
+                    }
+                    is kotlinx.serialization.json.JsonPrimitive -> {
+                        // Plain text reference
+                        val text = liContent.content.trim()
+                        if (text.isNotBlank()) {
+                            references.add(Pair(text, ""))
+                            Log.d("JMdictParser", "  ✓ Extracted reference: '$text'")
+                        }
+                    }
+                    else -> {
+                        // JsonObject or null - ignore
+                    }
+                }
+            }
+        }
+    }
+
+    
+    /**
+     * Recursively search for glossary/glosses lists in structured content
+     * Handles nested content arrays (e.g., Japanese JMdict format)
+     */
+    private fun extractGlossaryFromContent(
+        content: kotlinx.serialization.json.JsonArray,
+        definitions: MutableList<String>
+    ) {
+        for (contentItem in content) {
+            val contentObj = contentItem as? kotlinx.serialization.json.JsonObject ?: continue
+            val tag = (contentObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+            
+            // Check if this is a glossary/glosses list
+            if (tag == "ol" || tag == "ul") {
+                val data = contentObj["data"] as? kotlinx.serialization.json.JsonObject
+                val dataContent = (data?.get("content") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                
+                if (dataContent == "glosses" || dataContent == "glossary") {
+                    // Found the glossary list! Extract definitions from list items
+                    Log.d("JMdictParser", "✓ Found glossary/glosses list (tag=$tag, data=$dataContent)")
+                    val listContent = contentObj["content"]
+                    
+                    when (listContent) {
+                        is kotlinx.serialization.json.JsonArray -> {
+                            // Content is an array of li items
+                            extractDefinitionsFromList(listContent, definitions)
+                        }
+                        is kotlinx.serialization.json.JsonObject -> {
+                            // Content is a single li item (wrap in array)
+                            Log.d("JMdictParser", "  Note: Single object instead of array, wrapping")
+                            val singleItemArray = kotlinx.serialization.json.JsonArray(listOf(listContent))
+                            extractDefinitionsFromList(singleItemArray, definitions)
+                        }
+                        else -> {
+                            Log.w("JMdictParser", "⊘ Glossary list has unexpected content type: ${listContent?.javaClass?.simpleName}")
+                        }
+                    }
+                    continue // Don't recurse into glossary lists
+                }
+            }
+            
+            // Recurse into nested content arrays
+            val nestedContent = contentObj["content"] as? kotlinx.serialization.json.JsonArray
+            if (nestedContent != null) {
+                extractGlossaryFromContent(nestedContent, definitions)
+            }
+        }
+    }
+    
     private fun extractDefinitionsFromList(
         list: kotlinx.serialization.json.JsonArray,
         definitions: MutableList<String>
@@ -320,44 +689,36 @@ class JMdictParser {
             val tag = (itemObj["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
             
             if (tag == "li") {
-                val content = itemObj["content"] as? kotlinx.serialization.json.JsonArray ?: continue
+                val liContent = itemObj["content"]
                 
-                for (contentItem in content) {
-                    val divObj = contentItem as? kotlinx.serialization.json.JsonObject ?: continue
-                    val divContent = divObj["content"] as? kotlinx.serialization.json.JsonArray ?: continue
-                    
-                    val definitionBuilder = StringBuilder()
-                    
-                    // Extract first text element (the actual definition)
-                    for (element in divContent) {
-                        when (element) {
-                            is kotlinx.serialization.json.JsonPrimitive -> {
-                                val text = element.content
-                                // Add the main definition
-                                if (text.isNotBlank() && !isSourceLanguageExample(text)) {
-                                    definitionBuilder.append(text)
-                                }
-                            }
-                            is kotlinx.serialization.json.JsonObject -> {
-                                // Check if this is a details element with examples
-                                val detailsTag = (element["tag"] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                                if (detailsTag == "details") {
-                                    val examples = extractExamples(element)
-                                    if (examples.isNotEmpty()) {
-                                        definitionBuilder.append("\n")
-                                        examples.forEachIndexed { index, example ->
-                                            definitionBuilder.append("\n  • $example")
-                                        }
-                                    }
-                                }
-                            }
-                            else -> continue
+                when (liContent) {
+                    is kotlinx.serialization.json.JsonPrimitive -> {
+                        // Simple case: content is directly a string
+                        val text = liContent.content
+                        if (text.isNotBlank() && !isSourceLanguageExample(text)) {
+                            Log.d("JMdictParser", "  ✓ Extracted gloss: '$text'")
+                            definitions.add(text)
                         }
                     }
-                    
-                    val fullDefinition = definitionBuilder.toString().trim()
-                    if (fullDefinition.isNotBlank()) {
-                        definitions.add(fullDefinition)
+                    is kotlinx.serialization.json.JsonArray -> {
+                        // Complex case: content is an array of objects (divs, etc.)
+                        for (contentItem in liContent) {
+                            when (contentItem) {
+                                is kotlinx.serialization.json.JsonPrimitive -> {
+                                    val text = contentItem.content
+                                    if (text.isNotBlank() && !isSourceLanguageExample(text)) {
+                                        Log.d("JMdictParser", "  ✓ Extracted gloss (from array): '$text'")
+                                        definitions.add(text)
+                                    }
+                                }
+                                else -> {
+                                    Log.d("JMdictParser", "  ⊘ Skipping non-primitive in li array: ${contentItem.javaClass.simpleName}")
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        Log.d("JMdictParser", "  ⊘ Unexpected li content type: ${liContent?.javaClass?.simpleName}")
                     }
                 }
             }

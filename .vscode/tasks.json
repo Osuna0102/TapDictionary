@@ -189,6 +189,36 @@
                 "panel": "dedicated",
                 "focus": true
             }
+        },
+        {
+            "label": "DB: Check Word Glosses",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-File",
+                "${workspaceFolder}/scripts/check_word.ps1"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            }
+        },
+        {
+            "label": "DB: List All Dictionaries",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "adb exec-out \"run-as com.godtap.dictionary cat databases/dictionary_database\" > temp.db; Write-Host \"\\nInstalled Dictionaries:\\n\"; sqlite3 temp.db \"SELECT id, name, sourceLanguage, targetLanguage, enabled, entryCount FROM dictionary_metadata;\"; Remove-Item temp.db"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            }
         }
     ]
 }

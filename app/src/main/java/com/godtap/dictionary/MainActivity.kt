@@ -19,6 +19,7 @@ import com.godtap.dictionary.ui.screens.*
 import com.godtap.dictionary.util.PermissionHelper
 import com.godtap.dictionary.overlay.OverlayManager
 import com.godtap.dictionary.downloader.DictionaryDownloader
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -134,6 +135,11 @@ class MainActivity : ComponentActivity() {
                     dictionaryImported = dictionaryImported,
                     onRequestOverlayPermission = { requestOverlayPermission() },
                     onOpenAccessibilitySettings = { openAccessibilitySettings() },
+                    onOpenDictionaryManagement = { 
+                        dictionaryImported = true // Mark as complete when user opens the screen
+                        launchDictionaryManagement()
+                        showOnboarding = false
+                    },
                     onSkip = { showOnboarding = false }
                 )
             } else {

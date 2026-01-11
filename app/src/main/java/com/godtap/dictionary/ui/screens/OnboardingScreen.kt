@@ -30,6 +30,7 @@ fun OnboardingScreen(
     dictionaryImported: Boolean,
     onRequestOverlayPermission: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
+    onOpenDictionaryManagement: () -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -103,7 +104,7 @@ fun OnboardingScreen(
                             when (index) {
                                 0 -> if (!overlayPermissionGranted) onRequestOverlayPermission()
                                 1 -> if (!accessibilityEnabled) onOpenAccessibilitySettings()
-                                2 -> { /* Dictionary download handled automatically */ }
+                                2 -> if (!dictionaryImported) onOpenDictionaryManagement()
                             }
                         }
                     )
