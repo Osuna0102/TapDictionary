@@ -38,8 +38,11 @@ class TtsSettingsActivity : ComponentActivity() {
         ttsManager = TtsManager(applicationContext)
         dictionaryManager = DictionaryManager(applicationContext)
         
+        val sharedPrefs = getSharedPreferences("dictionary_prefs", Context.MODE_PRIVATE)
+        val isDarkTheme = sharedPrefs.getBoolean("dark_theme", false)
+        
         setContent {
-            GodTapDictionaryTheme {
+            GodTapDictionaryTheme(darkTheme = isDarkTheme) {
                 TtsSettingsScreen()
             }
         }
@@ -152,46 +155,37 @@ class TtsSettingsActivity : ComponentActivity() {
                     }
                 }
                 
-                // Voice selection section
+                // Language status and info section
                 item {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Available Voices for ${getLanguageName(selectedLanguage)}",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                
-                if (availableVoices.isEmpty()) {
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer
-                            )
-                        ) {
-                            Text(
-                                text = "No voices available for this language.\nTry installing additional voices from System Settings.",
-                                modifier = Modifier.padding(16.dp),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                } else {
-                    items(availableVoices) { voice ->
-                        VoiceCard(
-                            voice = voice,
-                            isSelected = selectedVoice == voice.name,
-                            onSelect = {
-                                ttsManager.setVoice(voice.name)
-                                prefs.edit().putString("voice_$selectedLanguage", voice.name).apply()
-                                selectedVoice = voice.name
-                            },
-                            onTest = {
-                                ttsManager.setVoice(voice.name)
-                                ttsManager.speak(getTestPhrase(selectedLanguage), selectedLanguage)
-                            }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
                         )
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Selected Language: ${getLanguageName(selectedLanguage)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // Test button for current language
+                            Button(
+                                onClick = {
+                                    ttsManager.speak(getTestPhrase(selectedLanguage), selectedLanguage)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Check, null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("🔊 Test Voice")
+                            }
+                        }
                     }
                 }
                 
@@ -206,96 +200,22 @@ class TtsSettingsActivity : ComponentActivity() {
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                text = "ℹ️ About TTS Voices",
+                                text = "ℹ️ About Text-to-Speech",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "• Some voices may require internet connection\n" +
+                                text = "• The app uses your device's default voice for each language\n" +
                                        "• Voice quality and latency vary by device\n" +
-                                       "• Install additional voices from Android System Settings",
+                                       "• Install additional language packs from System Settings\n" +
+                                       "• Some voices may require internet connection",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                         }
                     }
-                }
-            }
-        }
-    }
-    
-    @Composable
-    fun VoiceCard(
-        voice: VoiceInfo,
-        isSelected: Boolean,
-        onSelect: () -> Unit,
-        onTest: () -> Unit
-    ) {
-        ElevatedCard(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onSelect() },
-            shape = RoundedCornerShape(12.dp),
-            colors = if (isSelected) {
-                CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            } else {
-                CardDefaults.elevatedCardColors()
-            }
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = voice.displayName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        if (isSelected) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = "Selected",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    Text(
-                        text = "Quality: ${voice.quality} | Latency: ${voice.latency}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    
-                    if (voice.isNetworkBased) {
-                        Text(
-                            text = "⚠️ Requires internet",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-                
-                // Test button
-                FilledTonalButton(
-                    onClick = onTest,
-                    modifier = Modifier.padding(start = 8.dp)
-                ) {
-                    Text("🔊 Test")
                 }
             }
         }

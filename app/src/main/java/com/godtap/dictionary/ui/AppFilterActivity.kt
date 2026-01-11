@@ -46,8 +46,11 @@ class AppFilterActivity : ComponentActivity() {
         
         appFilterManager = AppFilterManager(this)
         
+        val sharedPrefs = getSharedPreferences("dictionary_prefs", android.content.Context.MODE_PRIVATE)
+        val isDarkTheme = sharedPrefs.getBoolean("dark_theme", false)
+        
         setContent {
-            GodTapDictionaryTheme {
+            GodTapDictionaryTheme(darkTheme = isDarkTheme) {
                 AppFilterScreen()
             }
         }

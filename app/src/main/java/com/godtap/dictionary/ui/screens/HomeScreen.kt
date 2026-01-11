@@ -32,9 +32,47 @@ data class RecentLookup(
     val count: Int
 )
 
+/**
+ * Parse Yomichan structured content JSON to plain text
+ */
+private fun parseYomichanGloss(gloss: String): String {
+    return try {
+        if (gloss.startsWith("[") || gloss.startsWith("{")) {
+            // Extract content fields from structured JSON
+            val contentRegex = "\"content\":\"([^\"]+)\"".toRegex()
+            val matches = contentRegex.findAll(gloss)
+            val extracted = matches.map { it.groupValues[1] }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .toList()
+            
+            if (extracted.isNotEmpty()) {
+                return extracted.joinToString("; ")
+            }
+            
+            // Fallback: try to extract text fields
+            val plainTextRegex = "\"text\":\"([^\"]+)\"".toRegex()
+            val plainMatches = plainTextRegex.findAll(gloss)
+                .map { it.groupValues[1] }
+                .distinct()
+                .toList()
+            
+            if (plainMatches.isNotEmpty()) {
+                return plainMatches.joinToString("; ")
+            }
+        }
+        
+        // Return as-is if not structured content
+        gloss
+    } catch (e: Exception) {
+        gloss // Return original on error
+    }
+}
+
 @Composable
 fun HomeScreen(
     onTestPopup: (String, String) -> Unit,
+    overlayManager: com.godtap.dictionary.overlay.OverlayManager,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -52,6 +90,10 @@ fun HomeScreen(
         com.godtap.dictionary.repository.DictionaryRepository(database)
     }
     
+    val dictionaryManager = remember {
+        com.godtap.dictionary.manager.DictionaryManager(context)
+    }
+    
     // Load recent lookups on mount
     LaunchedEffect(Unit) {
         scope.launch {
@@ -64,20 +106,79 @@ fun HomeScreen(
                     count = entry.lookupCount
                 )
             }
+            
+            // Get source language from active dictionary
+            val activeDict = dictionaryManager.getActiveDictionary()
+            if (activeDict != null) {
+                fromLanguage = activeDict.sourceLanguage
+                toLanguage = activeDict.targetLanguage
+            }
         }
     }
     
-    // Search function with API fallback
+    // Search function with API fallback - searches active dictionaries and triggers popup
     fun performSearch(query: String) {
         if (query.isBlank()) return
         
         scope.launch {
-            // Try dictionary first
-            val entry = repository.search(query)
-            if (entry != null) {
+            // Use DictionaryLookup to search active dictionaries
+            val dictionaryLookup = com.godtap.dictionary.lookup.DictionaryLookup(repository, fromLanguage)
+            val lookupResult = dictionaryLookup.lookup(query)
+            
+            android.util.Log.d("HomeScreen", "Search query: '$query', fromLanguage: '$fromLanguage'")
+            android.util.Log.d("HomeScreen", "Lookup result: ${lookupResult != null}")
+            
+            if (lookupResult != null) {
+                // Found in dictionary - trigger overlay popup
+                val entry = lookupResult.entry
                 val word = entry.primaryExpression ?: entry.primaryReading
-                val translation = entry.getAllGlosses().joinToString("; ")
-                onTestPopup(word, translation)
+                
+                // Get translation with multiple fallbacks, parsing structured content
+                val rawGlosses = entry.getAllGlosses()
+                android.util.Log.d("HomeScreen", "Raw glosses count: ${rawGlosses.size}")
+                rawGlosses.forEachIndexed { i, g -> 
+                    android.util.Log.d("HomeScreen", "  Gloss $i: ${g.take(100)}")
+                }
+                
+                // Parse Yomichan structured content
+                val parsedGlosses = rawGlosses.map { parseYomichanGloss(it) }.filter { it.isNotBlank() }
+                android.util.Log.d("HomeScreen", "Parsed glosses: ${parsedGlosses.joinToString("; ")}")
+                
+                val translation = when {
+                    parsedGlosses.isNotEmpty() -> parsedGlosses.joinToString("; ")
+                    rawGlosses.isNotEmpty() -> rawGlosses.joinToString("; ") // Fallback: use raw if parsing failed
+                    entry.getPrimaryGloss().isNotBlank() -> parseYomichanGloss(entry.getPrimaryGloss())
+                    entry.senses.isNotEmpty() -> {
+                        // Fallback: extract from senses with parsing
+                        entry.senses.joinToString("\n") { sense ->
+                            val pos = if (sense.partsOfSpeech.isNotEmpty()) 
+                                "[${sense.partsOfSpeech.joinToString(", ")}] " 
+                            else ""
+                            val gloss = sense.glosses.firstOrNull()?.let { parseYomichanGloss(it) } ?: "No definition"
+                            "$pos$gloss"
+                        }
+                    }
+                    else -> "No translation available"
+                }
+                
+                android.util.Log.d("HomeScreen", "Found in dictionary - word: '$word', translation: '$translation'")
+                
+                // Get part of speech for display
+                val partsOfSpeech = entry.getPartsOfSpeech()
+                val posDisplay = if (partsOfSpeech.isNotEmpty()) {
+                    partsOfSpeech.first().split(",").first().trim().capitalize()
+                } else {
+                    null
+                }
+                
+                // Show popup using OverlayManager
+                overlayManager.showPopup(
+                    word = word,
+                    translation = translation,
+                    lookupCount = entry.lookupCount,
+                    sourceLanguage = fromLanguage,
+                    partOfSpeech = posDisplay
+                )
                 
                 // Refresh recent lookups after search
                 kotlinx.coroutines.delay(100)
@@ -91,13 +192,35 @@ fun HomeScreen(
                     )
                 }
             } else {
-                // Dictionary miss - try API fallback
+                // Dictionary miss - try API fallback and save to DB
                 val translationService = com.godtap.dictionary.api.TranslationService()
                 val translated = translationService.translate(query, fromLanguage, toLanguage)
+                
                 if (translated != null) {
-                    onTestPopup(query, "$translated\n\n[Auto-translated via API]")
+                    // Save API translation to DB for future use
+                    try {
+                        repository.saveApiTranslation(
+                            query = query,
+                            translation = translated,
+                            sourceLanguage = fromLanguage,
+                            targetLanguage = toLanguage
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.e("HomeScreen", "Failed to save API translation", e)
+                    }
+                    
+                    // Show popup with API translation
+                    overlayManager.showPopup(
+                        word = query,
+                        translation = "$translated\n\n[Auto-translated via API]",
+                        sourceLanguage = fromLanguage
+                    )
                 } else {
-                    onTestPopup(query, "No translation found")
+                    overlayManager.showPopup(
+                        word = query,
+                        translation = "No translation found",
+                        sourceLanguage = fromLanguage
+                    )
                 }
             }
         }
@@ -182,9 +305,6 @@ fun HomeScreen(
                         if (searchValue.isNotBlank()) {
                             performSearch(searchValue)
                         }
-                    },
-                    onVoiceClick = {
-                        // Voice input functionality
                     }
                 )
                 Spacer(modifier = Modifier.height(24.dp))
@@ -280,19 +400,21 @@ private fun LanguageSelector(
                 modifier = Modifier.weight(1f)
             )
             
+            // Disabled swap button (one-way translation)
             IconButton(
-                onClick = onSwap,
+                onClick = { /* Disabled */ },
+                enabled = false,
                 modifier = Modifier
                     .size(40.dp)
                     .background(
-                        color = MaterialTheme.colorScheme.primaryContainer,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         shape = RoundedCornerShape(12.dp)
                     )
             ) {
                 Icon(
                     imageVector = Icons.Default.ArrowForward,
-                    contentDescription = "Swap languages",
-                    tint = MaterialTheme.colorScheme.primary
+                    contentDescription = "One-way translation only",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
             
@@ -333,8 +455,7 @@ private fun LanguageButton(
 private fun SearchBar(
     value: String,
     onValueChange: (String) -> Unit,
-    onSearch: () -> Unit,
-    onVoiceClick: () -> Unit
+    onSearch: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -382,7 +503,7 @@ private fun SearchBar(
             )
             
             IconButton(
-                onClick = onVoiceClick,
+                onClick = onSearch,
                 modifier = Modifier
                     .size(40.dp)
                     .background(
@@ -392,7 +513,7 @@ private fun SearchBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "Voice input",
+                    contentDescription = "Search",
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(20.dp)
                 )
@@ -474,6 +595,6 @@ private fun getLanguageDisplayName(code: String): String {
         "en" -> "English"
         "es" -> "Spanish"
         "ko" -> "Korean"
-        else -> code.uppercase()
+        else -> code.toUpperCase(java.util.Locale.ROOT)
     }
 }

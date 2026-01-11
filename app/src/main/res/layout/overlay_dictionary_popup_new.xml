@@ -54,7 +54,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="食べる"
-                        android:textSize="24sp"
+                        android:textSize="28sp"
                         android:textStyle="bold"
                         android:textColor="#1A1A1A"
                         android:letterSpacing="0.01"
@@ -68,12 +68,12 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:text="Verb, Ichidan"
-                        android:paddingStart="10dp"
-                        android:paddingEnd="10dp"
-                        android:paddingTop="3dp"
-                        android:paddingBottom="3dp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:paddingTop="4dp"
+                        android:paddingBottom="4dp"
                         android:background="@drawable/badge_background"
-                        android:textSize="12sp"
+                        android:textSize="11sp"
                         android:textStyle="bold"
                         android:textColor="#0066CC"
                         android:visibility="gone" />
@@ -221,37 +221,38 @@
                     android:layout_centerVertical="true"
                     android:orientation="horizontal">
 
-                    <!-- TTS Speaker Button (Primary - Blue background) -->
-                    <ImageView
+                    <!-- TTS Speaker Button -->
+                    <TextView
                         android:id="@+id/speakerButton"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:src="@drawable/ic_speaker"
-                        android:padding="8dp"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:text="🔊"
+                        android:textSize="20sp"
+                        android:gravity="center"
                         android:clickable="true"
                         android:focusable="true"
                         android:background="@drawable/action_button_background"
                         android:layout_marginEnd="8dp"
-                        android:tint="@android:color/white"
                         android:contentDescription="Pronounce word" />
 
-                    <!-- Copy Button (Secondary - Transparent) -->
-                    <ImageView
+                    <!-- Copy Button (future) -->
+                    <TextView
                         android:id="@+id/copyButton"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:src="@drawable/ic_copy"
-                        android:padding="8dp"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:text="📋"
+                        android:textSize="18sp"
+                        android:gravity="center"
                         android:clickable="true"
                         android:focusable="true"
-                        android:background="@drawable/action_button_transparent"
+                        android:background="@drawable/action_button_secondary"
                         android:layout_marginEnd="8dp"
-                        android:tint="#666666"
-                        android:contentDescription="Copy word" />
+                        android:visibility="gone"
+                        android:contentDescription="Copy" />
 
                 </LinearLayout>
 
-                <!-- Lookup Count Badge (Orange) -->
+                <!-- Lookup Count Badge -->
                 <TextView
                     android:id="@+id/lookupCountText"
                     android:layout_width="wrap_content"
@@ -259,14 +260,14 @@
                     android:layout_alignParentEnd="true"
                     android:layout_centerVertical="true"
                     android:text="12x looked up"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:paddingTop="5dp"
-                    android:paddingBottom="5dp"
-                    android:background="@drawable/count_badge_orange"
-                    android:textSize="12sp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp"
+                    android:background="@drawable/count_badge_background"
+                    android:textSize="11sp"
                     android:textStyle="bold"
-                    android:textColor="#D97706" />
+                    android:textColor="#0066CC" />
 
             </RelativeLayout>
 
@@ -275,4 +276,3 @@
     </androidx.cardview.widget.CardView>
 
 </FrameLayout>
-

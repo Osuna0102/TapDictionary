@@ -123,9 +123,6 @@ fun ActiveDictionaryTab(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var testText by remember { mutableStateOf("") }
-    var testResult by remember { mutableStateOf<String?>(null) }
-    var isTesting by remember { mutableStateOf(false) }
     
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -224,114 +221,8 @@ fun ActiveDictionaryTab(
             }
         }
         
-        // Test section
-        if (activeDictionary != null && activeDictionary.installed) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Test Dictionary",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Enter text in ${getLanguageName(activeDictionary.sourceLanguage)} to test the dictionary lookup",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        // Sample texts based on language
-                        val sampleText = when (activeDictionary.sourceLanguage) {
-                            "ja" -> "日本"
-                            "es" -> "hola"
-                            "ko" -> "안녕"
-                            "zh" -> "你好"
-                            else -> "hello"
-                        }
-                        
-                        OutlinedButton(
-                            onClick = { testText = sampleText },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Edit, null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Use sample text: $sampleText")
-                        }
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        OutlinedTextField(
-                            value = testText,
-                            onValueChange = { testText = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Test text") },
-                            placeholder = { Text("Enter text to test...") },
-                            singleLine = true
-                        )
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    isTesting = true
-                                    testResult = null
-                                    try {
-                                        Log.d(TAG, "Testing dictionary with text: $testText")
-                                        // Simulate the text selection and overlay popup
-                                        val overlayManager = OverlayManager(context)
-                                        // For now, just show a message
-                                        testResult = "✓ Test triggered! Select this text in any app to see the popup:\n\n$testText"
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Test failed", e)
-                                        testResult = "✗ Test failed: ${e.message}"
-                                    } finally {
-                                        isTesting = false
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = testText.isNotBlank() && !isTesting
-                        ) {
-                            if (isTesting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            } else {
-                                Icon(Icons.Default.Search, null)
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Test Dictionary Lookup")
-                        }
-                        
-                        testResult?.let { result ->
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Divider()
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Test Result",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = result,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        // Test section removed - use Home screen for testing
+        // Testing can now be done from Home screen with the + button
     }
 }
 

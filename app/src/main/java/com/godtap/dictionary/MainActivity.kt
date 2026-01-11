@@ -143,14 +143,20 @@ class MainActivity : ComponentActivity() {
                         "home" -> HomeScreen(
                             onTestPopup = { word, translation ->
                                 overlayManager.showPopup(word, translation)
-                            }
+                            },
+                            overlayManager = overlayManager
                         )
                         "history" -> HistoryScreen(
                             onWordClick = { word, translation ->
                                 overlayManager.showPopup(word, translation)
                             }
                         )
-                        "features" -> FeaturesScreen()
+                        "dictionaries" -> {
+                            // Launch dictionary management
+                            launchDictionaryManagement()
+                            // Return to home after launch
+                            currentRoute = "home"
+                        }
                         "settings" -> SettingsScreen(
                             onDictionaryManagementClick = { launchDictionaryManagement() },
                             onAppFilterClick = { launchAppFilterSettings() },

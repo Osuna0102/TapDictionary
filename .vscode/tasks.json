@@ -144,6 +144,51 @@
                 "reveal": "always",
                 "panel": "shared"
             }
+        },
+        {
+            "label": "DB: Query Entry",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "$word = Read-Host 'Enter word to search'; adb exec-out \"run-as com.godtap.dictionary cat databases/dictionary_database\" > temp.db; sqlite3 temp.db \"SELECT id, primaryExpression, primaryReading, substr(senses, 1, 200) as senses_preview FROM dictionary_entries WHERE primaryExpression = '$word' OR primaryReading = '$word' LIMIT 5;\"; Remove-Item temp.db"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            }
+        },
+        {
+            "label": "DB: Count Entries",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "adb exec-out \"run-as com.godtap.dictionary cat databases/dictionary_database\" > temp.db; Write-Host \"Total entries:\"; sqlite3 temp.db 'SELECT COUNT(*) FROM dictionary_entries;'; Write-Host \"Entries with glosses:\"; sqlite3 temp.db 'SELECT COUNT(*) FROM dictionary_entries WHERE senses LIKE ''%glosses%'';'; Write-Host \"Sample entry:\"; sqlite3 temp.db 'SELECT primaryExpression, primaryReading, substr(senses, 1, 300) FROM dictionary_entries LIMIT 1;'; Remove-Item temp.db"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            }
+        },
+        {
+            "label": "DB: Sample Entries",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "adb exec-out \"run-as com.godtap.dictionary cat databases/dictionary_database\" > temp.db; sqlite3 temp.db \"SELECT primaryExpression, primaryReading, lookupCount, substr(senses, 1, 150) as senses_sample FROM dictionary_entries WHERE lookupCount > 0 ORDER BY lookupCount DESC LIMIT 10;\"; Remove-Item temp.db"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            }
         }
     ]
 }

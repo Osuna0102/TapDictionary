@@ -19,6 +19,13 @@
     <!-- Permiso para consultar todos los paquetes instalados (Android 11+) -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     
+    <!-- Permissions for notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Permissions for exact alarms (Android 12+) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    
     <!-- Permissions for OCR feature -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -137,6 +144,11 @@
                 <action android:name="com.godtap.dictionary.ACTION_TOGGLE_UNDERLINE" />
             </intent-filter>
         </receiver>
+        
+        <!-- Daily Reminder Receiver -->
+        <receiver
+            android:name=".util.DailyReminderReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

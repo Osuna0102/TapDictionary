@@ -4,34 +4,54 @@
 
 GodTap Dictionary is an Android accessibility service that provides instant translation popups for selected text across any app. It's a multi-language dictionary app inspired by Yomitan, supporting Japanese, Spanish, Korean, and potentially other languages with pluggable dictionary backends.
 
-**Core Technologies:** Kotlin, Jetpack Compose, Room, Android AccessibilityService, Kuromoji (Japanese tokenization)
+**Core Technologies:** Kotlin, Jetpack Compose, Room, Android AccessibilityService, ML Kit (OCR), Google Play Billing, AdMob
+
+**Status:** Production-ready freemium app with gesture controls, OCR, and monetization features.
 
 ## Architecture
 
-### Three-Phase Lookup Pipeline
+### Multi-Modal Translation Pipeline
 
-The app uses a sophisticated multi-stage lookup process:
+The app supports three translation modes:
 
-1. **Text Selection** → `TextSelectionAccessibilityService` monitors `TYPE_VIEW_TEXT_SELECTION_CHANGED` events
-2. **Language Detection** → `LanguageDetector` identifies source language from selected text
-3. **Lookup Strategy** → Different algorithms per language:
-   - **Japanese**: Progressive substring matching with deinflection (mirrors Yomitan's `_findTermsInternal()`)
-   - **Spanish/Korean**: Word boundary extraction with morphological transformations
-4. **Display** → `OverlayManager` shows floating popup with `TYPE_APPLICATION_OVERLAY`
+1. **Text Selection Mode** (Primary):
+   - `TextSelectionAccessibilityService` monitors `TYPE_VIEW_TEXT_SELECTION_CHANGED` events
+   - `LanguageDetector` identifies source language from selected text
+   - Language-specific lookup strategies:
+     - **Japanese**: Progressive substring matching with deinflection (mirrors Yomitan's `_findTermsInternal()`)
+     - **Spanish/Korean**: Word boundary extraction with morphological transformations
+   - Fallback to `TranslationService` (MyMemory API) when dictionary has no match
+   - `OverlayManager` shows floating popup with optional AdMob banner (free tier only)
+
+2. **OCR Mode** (New - Jan 2026):
+   - User draws selection rectangle via `OcrSelectionOverlay`
+   - ML Kit Text Recognition processes captured screen area
+   - Recognized text fed into normal lookup pipeline
+   - Supports text in images, screenshots, PDFs
+
+3. **Gesture Controls** (New - Jan 2026):
+   - `GestureOverlay` intercepts multi-touch events (Android 11+ compatibility)
+   - **2-finger swipe right** → Activate OCR mode
+   - **2-finger swipe left** → Toggle text underlining
+   - **2-finger swipe up** → Toggle service on/off
 
 ### Key Components
 
-- **`TextSelectionAccessibilityService`**: Core service running as foreground service with notification. Filters sensitive contexts (passwords, keyboards). Lives in `service/`
+- **`TextSelectionAccessibilityService`** (1699 lines): Core service with foreground notification, gesture detection, OCR integration, app filtering. Lives in `service/`
 - **`DictionaryLookup`**: Language-aware lookup orchestrator. Japanese uses progressive substrings; Spanish/Korean extract word boundaries. Lives in `lookup/`
 - **`JapaneseDeinflector`**: Transforms conjugated forms → dictionary forms (食べました → 食べる). Lives in `deinflection/`
 - **`DictionaryManager`**: Manages multi-dictionary lifecycle (download, enable/disable, metadata). Lives in `manager/`
-- **`MultiDictionaryDownloader`**: Downloads and imports Yomitan-format dictionaries. Lives in `manager/`
-- **`OverlayManager`**: Manages floating popup window with 30s auto-dismiss. Lives in `overlay/`
-- **`DictionaryRepository`**: Room-backed search with indexed queries. Lives in `repository/`
+- **`TranslationService`**: MyMemory API fallback for words not in local dictionaries. Lives in `api/`
+- **`OcrSelectionOverlay`** + **`OcrTextProcessor`**: ML Kit-powered screen text recognition. Lives in `ocr/`
+- **`GestureOverlay`**: Invisible full-screen overlay for multi-touch gesture detection. Lives in `gesture/`
+- **`OverlayManager`**: Manages floating popup window with 30s auto-dismiss, AdMob integration. Lives in `overlay/`
+- **`BillingManager`**: Google Play Billing v6 integration, Pro version purchase ($4.99 one-time). Lives in `billing/`
+- **`UsageLimitManager`**: Enforces 20 lookups/day, 10 TTS/day limits for free tier. Lives in `usage/`
+- **`AdManager`**: AdMob banner ads (320x50) displayed in popup for free users. Lives in `ads/`
 
-### Database Schema (Room v4)
+### Database Schema (Room v5)
 
-- **`dictionary_entries`**: Main entries with `dictionaryId`, indexed on `primaryExpression`, `primaryReading`, `frequency`
+- **`dictionary_entries`**: Main entries with `dictionaryId`, indexed on `primaryExpression`, `primaryReading`, `frequency`, includes `lookupCount` for usage tracking
 - **`dictionary_metadata`**: Tracks available dictionaries, install status, enabled state
 - **`language_pairs`**: Supported language pair configurations
 
@@ -41,32 +61,35 @@ Data models mirror JMdict structure: `KanjiElement[]`, `ReadingElement[]`, `Sens
 
 ### Build & Deploy
 
-Use predefined VS Code tasks (see `.vscode/tasks.json` patterns):
+Use VS Code tasks (`.vscode/tasks.json`):
 
 ```bash
 # Quick build + install
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 
-# Full deployment with logcat
-# Task: "Build, Install and Launch with Logcat"
+# Full deployment with logcat (RECOMMENDED)
+# VS Code Task: "Build, Install and Launch with Logcat"
 # Sequence: Build → Stop → Install → Clear Logcat → Launch → Logcat Filter
 ```
 
-**Hot-reload available:** `./dev.sh` uses fswatch for auto-rebuild on file changes (requires fswatch installation)
+**Hot-reload:** `./dev.ps1` (PowerShell) or `./dev.sh` (Bash) for auto-rebuild on file changes
 
 ### Debugging
 
 **Critical logs to monitor:**
 ```bash
-# Accessibility service events
-adb logcat TextSelectionService:D '*:S'
+# Accessibility service + overlay + lookups (MOST USEFUL)
+adb logcat TextSelectionService:D OverlayManager:D DictionaryLookup:D '*:S'
 
-# Overlay popup lifecycle
-adb logcat OverlayManager:D '*:S'
+# OCR debugging
+adb logcat OcrSelectionOverlay:D OcrTextProcessor:D '*:S'
 
-# Dictionary lookups
-adb logcat DictionaryLookup:D '*:S'
+# Gesture detection
+adb logcat GestureOverlay:D '*:S'
+
+# Billing/monetization
+adb logcat BillingManager:D UsageLimitManager:D AdManager:D '*:S'
 ```
 
 **Permission verification:**
@@ -76,12 +99,33 @@ adb shell settings get secure enabled_accessibility_services | grep godtap
 
 # Check overlay permission
 adb shell appops get com.godtap.dictionary SYSTEM_ALERT_WINDOW
+
+# Check installed packages (for app filtering)
+adb shell dumpsys package com.godtap.dictionary | grep permission
 ```
 
 **Common issues:**
-- AccessibilityService not detecting selection → Verify service enabled in Settings > Accessibility
-- Popup not showing → Check `SYSTEM_ALERT_WINDOW` permission granted
+- AccessibilityService not detecting selection → Verify service enabled in Settings > Accessibility > GodTap Dictionary
+- Popup not showing → Check `SYSTEM_ALERT_WINDOW` permission granted in Settings > Apps > Special access
 - No dictionary results → Ensure at least one dictionary is downloaded and enabled via `DictionaryManager.initializeAvailableDictionaries()`
+- OCR not working → Verify ML Kit dependencies downloaded (automatic on first use, requires internet)
+- Gestures not detected → Check `GestureOverlay` is active (shown in notification with "Gestures Active" text)
+- Ads not showing → Verify AdMob test mode enabled (`AdManager.USE_TEST_ADS = true`) and Google Play Services installed
+
+### Testing
+
+**Built-in test activities:**
+- `TestActivity`: Provides Japanese/Spanish/Korean test text for selection testing
+- `GestureTestActivity`: Visual feedback for multi-touch gesture detection
+- `LocalDictionaryTestActivity`: Manual dictionary lookup testing without accessibility service
+- `DictionaryDebugActivity`: Legacy manual lookup UI with language selection
+
+**Key test scenarios:**
+1. **Text Selection**: Select text in Chrome/Kindle → Verify popup appears with correct translation
+2. **OCR**: 2-finger swipe right → Draw rectangle over text → Verify recognition + translation
+3. **Gestures**: Test all gesture combinations in `GestureTestActivity`
+4. **Monetization**: Test free tier limits (20 lookups/day) → Verify upgrade prompt → Test purchase flow (use test card)
+5. **Multi-language**: Test Japanese, Spanish, Korean text with appropriate dictionaries enabled
 
 ## Project-Specific Conventions
 
@@ -115,6 +159,22 @@ Import process: Download → Extract JSON → Parse → Batch insert with `dicti
 - Compose screens: `*Screen.kt` or `*ScreenNew.kt` (new Material 3 variants) in `ui/`
 - Utilities: Singleton `object`s in `util/` (e.g., `PermissionHelper`, `LanguageDetector`)
 
+### Monetization Integration
+
+**Free Tier:**
+- 20 dictionary lookups/day (enforced by `UsageLimitManager.checkLookupLimit()`)
+- 10 TTS plays/day (enforced by `UsageLimitManager.checkTtsLimit()`)
+- AdMob banner ads shown in popup (320x50px, bottom of overlay)
+- Upgrade prompts after 5 lookups and at limit
+
+**Pro Version ($4.99 one-time):**
+- Unlimited lookups and TTS
+- No ads
+- Purchase via `BillingManager.launchPurchaseFlow(activity)`
+- Status cached: `BillingManager.isProUser()` is synchronous
+
+**Critical:** Always check `billingManager.isProUser()` before showing ads or enforcing limits.
+
 ## Integration Points
 
 ### AccessibilityService Configuration
@@ -128,9 +188,11 @@ Service runs as **foreground service** with persistent notification (channel: `d
 
 ### External Dependencies
 
-- **Kuromoji (0.9.0)**: Japanese morphological analysis for advanced tokenization (not actively used in current MVP, placeholder for future)
+- **ML Kit Text Recognition (16.0.0)**: OCR with automatic model downloads on first use
 - **OkHttp (4.12.0)**: Dictionary downloads with progress tracking
 - **Kotlinx Serialization**: JSON parsing for Yomitan dictionary format
+- **Google Play Billing (6.1.0)**: In-app purchases for Pro version
+- **Google AdMob (22.6.0)**: Banner ads for free tier
 
 ### Cross-Component Communication
 
@@ -138,6 +200,7 @@ Service runs as **foreground service** with persistent notification (channel: `d
 - Services → Repository: Direct instantiation via `AppDatabase.getDatabase(context)`
 - UI → Manager: Lifecycle-scoped coroutines with `lifecycleScope.launch`
 - Overlay → Service: Created in service context, uses `WindowManager.addView()`
+- Billing → Usage: `BillingManager.getInstance()` singleton checked by all limit-aware components
 
 ## Common Tasks
 
@@ -159,20 +222,37 @@ Service runs as **foreground service** with persistent notification (channel: `d
 3. Add app-specific exclusions to `shouldIgnorePackage()` if needed
 4. Test with `TestActivity` built-in test screen with Japanese/Spanish text
 
+**Add new gesture:**
+1. Update `GestureOverlay.GestureListener` interface with new callback
+2. Implement detection logic in `GestureOverlay.handleTouchEvent()`
+3. Wire callback in `TextSelectionAccessibilityService`
+4. Test in `GestureTestActivity` with visual feedback
+
+**Modify monetization limits:**
+1. Update constants in `UsageLimitManager` (e.g., `DAILY_LOOKUP_LIMIT`)
+2. Ensure all limit checks call `billingManager.isProUser()` first
+3. Update upgrade prompt messages in `UpgradePromptManager`
+4. Test with test billing credentials (see `MONETIZATION_IMPLEMENTATION.md`)
+
 ## Testing Resources
 
 - **TestActivity**: Provides test text in Japanese, Spanish, Korean for selection testing without external apps
-- **DictionaryDebugActivity**: Manual lookup testing UI with language selection
+- **GestureTestActivity**: Visual feedback for multi-touch gesture detection with on-screen labels
+- **LocalDictionaryTestActivity**: Manual lookup testing UI with language selection
+- **DictionaryDebugActivity**: Legacy manual lookup interface
 - **Sample dictionaries**: `kty-es-ko/` folder contains small Korean-Spanish test dictionary for import verification
 
 ## Key Files Reference
 
-- [`TextSelectionAccessibilityService.kt`](app/src/main/java/com/godtap/dictionary/service/TextSelectionAccessibilityService.kt): 538 lines - Core text monitoring logic
+- [`TextSelectionAccessibilityService.kt`](app/src/main/java/com/godtap/dictionary/service/TextSelectionAccessibilityService.kt): 1699 lines - Core accessibility service with gesture/OCR integration
 - [`DictionaryLookup.kt`](app/src/main/java/com/godtap/dictionary/lookup/DictionaryLookup.kt): 267 lines - Language-aware lookup orchestration
 - [`DictionaryManager.kt`](app/src/main/java/com/godtap/dictionary/manager/DictionaryManager.kt): 208 lines - Multi-dictionary lifecycle
+- [`BillingManager.kt`](app/src/main/java/com/godtap/dictionary/billing/BillingManager.kt): Google Play Billing v6 integration
+- [`AdManager.kt`](app/src/main/java/com/godtap/dictionary/ads/AdManager.kt): AdMob banner ad integration
+- [`UsageLimitManager.kt`](app/src/main/java/com/godtap/dictionary/usage/UsageLimitManager.kt): Free tier limit enforcement
 - [`README.md`](README.md): Comprehensive Spanish-language documentation with architecture diagrams
-- [`README_MULTI_DICT.md`](README_MULTI_DICT.md): Multi-language dictionary system implementation guide
+- [`MONETIZATION_IMPLEMENTATION.md`](MONETIZATION_IMPLEMENTATION.md): Complete monetization guide with test instructions
 
 ---
 
-**Last Updated:** 2026-01-02 | **Database Version:** 4 | **Min SDK:** 24 (Android 7.0)
+**Last Updated:** 2026-01-10 | **Database Version:** 5 | **Min SDK:** 30 (Android 11) | **Target SDK:** 34

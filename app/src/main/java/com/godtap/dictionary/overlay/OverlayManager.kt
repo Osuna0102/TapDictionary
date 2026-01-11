@@ -18,6 +18,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.godtap.dictionary.R
 import com.godtap.dictionary.util.TtsManager
+import com.godtap.dictionary.util.RomajiConverter
 import com.google.android.flexbox.FlexboxLayout
 
 class OverlayManager(private val context: Context) {
@@ -121,7 +122,9 @@ class OverlayManager(private val context: Context) {
         y: Int = -1, 
         sourceLanguage: String = "ja",
         fullSentence: String? = null,
-        depth: Int = 0
+        depth: Int = 0,
+        partOfSpeech: String? = null,
+        example: String? = null
     ) {
         Log.d(TAG, "showPopup() called for: $word (count: $lookupCount), language: $sourceLanguage, depth: $depth")
         
@@ -148,7 +151,33 @@ class OverlayManager(private val context: Context) {
                     Log.d(TAG, "Updating existing popup with translation")
                     existingView.findViewById<TextView>(R.id.wordText).text = word
                     existingView.findViewById<TextView>(R.id.translationText).text = translation
-                    existingView.findViewById<TextView>(R.id.lookupCountText).text = lookupCount.toString()
+                    
+                    // Update lookup count badge
+                    val countBadge = existingView.findViewById<TextView>(R.id.lookupCountText)
+                    countBadge.text = when {
+                        lookupCount == 0 -> "New word"
+                        lookupCount == 1 -> "1x looked up"
+                        else -> "${lookupCount}x looked up"
+                    }
+                    
+                    // Update part of speech badge
+                    val posBadge = existingView.findViewById<TextView>(R.id.partOfSpeechBadge)
+                    if (!partOfSpeech.isNullOrBlank()) {
+                        posBadge.text = partOfSpeech
+                        posBadge.visibility = View.VISIBLE
+                    } else {
+                        posBadge.visibility = View.GONE
+                    }
+                    
+                    // Update example section
+                    val exampleSection = existingView.findViewById<LinearLayout>(R.id.exampleSection)
+                    val exampleText = existingView.findViewById<TextView>(R.id.exampleText)
+                    if (!example.isNullOrBlank()) {
+                        exampleText.text = example
+                        exampleSection.visibility = View.VISIBLE
+                    } else {
+                        exampleSection.visibility = View.GONE
+                    }
                     
                     // Enable speaker button
                     existingView.findViewById<View>(R.id.speakerButton)?.apply {
@@ -180,15 +209,51 @@ class OverlayManager(private val context: Context) {
                 val themedContext = ContextThemeWrapper(context, R.style.Theme_GodTapDictionary)
                 val view = LayoutInflater.from(themedContext).inflate(R.layout.overlay_dictionary_popup, null)
                 
-                // Set content
-                view.findViewById<TextView>(R.id.wordText).text = word
-                view.findViewById<TextView>(R.id.translationText).text = translation
-                val countText = when {
-                    lookupCount == 0 -> "New word"
-                    lookupCount == 1 -> "Looked up 1 time"
-                    else -> "Looked up $lookupCount times"
+                // Set content with romaji for Japanese words
+                val displayText = if (sourceLanguage == "ja" && word.contains("(") && word.contains(")")) {
+                    // Format: "食べる (たべる)" -> "食べる たべる (taberu)"
+                    val hiragana = RomajiConverter.extractHiragana(word)
+                    val romaji = hiragana?.let { RomajiConverter.toRomaji(it) }
+                    
+                    if (hiragana != null && romaji != null) {
+                        val kanji = word.substringBefore("(").trim()
+                        "$kanji $hiragana ($romaji)"
+                    } else {
+                        word
+                    }
+                } else {
+                    word
                 }
-                view.findViewById<TextView>(R.id.lookupCountText).text = countText
+                
+                view.findViewById<TextView>(R.id.wordText).text = displayText
+                view.findViewById<TextView>(R.id.translationText).text = translation
+                
+                // Set lookup count badge
+                val countBadge = view.findViewById<TextView>(R.id.lookupCountText)
+                countBadge.text = when {
+                    lookupCount == 0 -> "New word"
+                    lookupCount == 1 -> "1x looked up"
+                    else -> "${lookupCount}x looked up"
+                }
+                
+                // Set part of speech badge
+                val posBadge = view.findViewById<TextView>(R.id.partOfSpeechBadge)
+                if (!partOfSpeech.isNullOrBlank()) {
+                    posBadge.text = partOfSpeech
+                    posBadge.visibility = View.VISIBLE
+                } else {
+                    posBadge.visibility = View.GONE
+                }
+                
+                // Set example section
+                val exampleSection = view.findViewById<LinearLayout>(R.id.exampleSection)
+                val exampleText = view.findViewById<TextView>(R.id.exampleText)
+                if (!example.isNullOrBlank()) {
+                    exampleText.text = example
+                    exampleSection.visibility = View.VISIBLE
+                } else {
+                    exampleSection.visibility = View.GONE
+                }
                 
                 // Show clickable sentence section if fullSentence is provided
                 val sentenceSection = view.findViewById<LinearLayout>(R.id.sentenceSection)
@@ -249,6 +314,19 @@ class OverlayManager(private val context: Context) {
                         if (!success) {
                             Log.w(TAG, "TTS failed or not available")
                         }
+                    }
+                }
+                
+                // Copy button to copy word to clipboard
+                view.findViewById<View>(R.id.copyButton)?.apply {
+                    setOnClickListener {
+                        Log.d(TAG, "Copy button clicked for: $currentWord")
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Translated word", currentWord)
+                        clipboard.setPrimaryClip(clip)
+                        
+                        // Show brief feedback (you could also use a Toast)
+                        android.widget.Toast.makeText(context, "Copied: $currentWord", android.widget.Toast.LENGTH_SHORT).show()
                     }
                 }
                 

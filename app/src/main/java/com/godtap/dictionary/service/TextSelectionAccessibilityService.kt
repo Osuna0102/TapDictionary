@@ -590,7 +590,8 @@ class TextSelectionAccessibilityService : AccessibilityService() {
 
                                 // For long text with clicks, if estimated position is in the middle,
                                 // also try positions near the end (where "ayudarte" would be)
-                                if (text.length > 50 && estimatedPos < text.length * 0.6f) {
+                                // SKIP THIS FOR JAPANESE - it doesn't have word boundaries
+                                if (sourceLang != "ja" && text.length > 50 && estimatedPos < text.length * 0.6f) {
                                     Log.d(TAG, "Long text detected, trying alternative positions for click")
                                     // Try positions near the end of the text
                                     val altPositions = listOf(
@@ -1047,7 +1048,13 @@ class TextSelectionAccessibilityService : AccessibilityService() {
                 Log.d(TAG, "Processing from position $startPosition: '$textToLookup' (full text: '$text')")
                 
                 // Show loading popup IMMEDIATELY while we search
-                overlayManager.showLoadingPopup(textToLookup, x, y, languageCode)
+                // For Japanese, show only first few characters since we'll progressively match
+                val loadingText = if (languageCode == "ja" && textToLookup.length > 10) {
+                    textToLookup.take(10) + "..."
+                } else {
+                    textToLookup
+                }
+                overlayManager.showLoadingPopup(loadingText, x, y, languageCode)
                 
                 // Use Yomitan-style progressive substring matching for Japanese
                 // Or word lookup for space-delimited languages
@@ -1168,70 +1175,63 @@ class TextSelectionAccessibilityService : AccessibilityService() {
      */
     private fun parseYomichanGloss(gloss: String): String {
         return try {
-            // List of tags to exclude (examples, notes, metadata)
-            val excludedTags = setOf(
-                "details-entry-examples", "example-sentence", "example-sentence-a",
-                "extra-info", "backlink", "usage-note", "note", "example",
-                "details", "usage", "see-also", "related"
-            )
+            // Yomichan uses structured-content format with deeply nested JSON
+            // Example: [{"content":[{"content":[{"content":"outside the country","tag":"li"}],"data":{"content":"glossary"},...}],"type":"structured-content"}]
             
-            // Yomichan uses structured-content format with nested JSON
-            // Extract just the text content, excluding examples
-            if (gloss.startsWith("[") || gloss.startsWith("{")) {
-                // Extract content, but skip excluded sections
-                val parts = mutableListOf<String>()
+            if (!gloss.startsWith("[") && !gloss.startsWith("{")) {
+                // Plain text gloss
+                return if (isLikelyExample(gloss)) "" else gloss
+            }
+            
+            // Extract all text content from "content" fields that are part of glossary
+            val glossaryItems = mutableListOf<String>()
+            
+            // Match glossary content sections: look for "data":{"content":"glossary"}
+            // Then extract the content items from that section
+            val glossaryPattern = """"data":\{"content":"glossary"\}[^}]*\}[^]]*"content":\[([^\]]+)\]""".toRegex()
+            val glossaryMatches = glossaryPattern.findAll(gloss)
+            
+            for (match in glossaryMatches) {
+                val contentSection = match.groupValues[1]
+                // Extract "content":"..." from this section
+                val contentPattern = """"content":"([^"]+)"""".toRegex()
+                val contentMatches = contentPattern.findAll(contentSection)
                 
-                // Split by common delimiters and filter
-                val segments = gloss.split(Regex("[;,]"))
-                for (segment in segments) {
-                    val trimmed = segment.trim()
-                    
-                    // Skip if it matches excluded tags
-                    val isExcluded = excludedTags.any { tag -> 
-                        trimmed.contains(tag, ignoreCase = true) ||
-                        trimmed.contains("\"tag\":\"$tag\"", ignoreCase = true)
+                for (contentMatch in contentMatches) {
+                    val text = contentMatch.groupValues[1]
+                    if (text.isNotBlank() && !isLikelyExample(text) && text != "li" && text != "ul") {
+                        glossaryItems.add(text)
                     }
-                    
-                    if (isExcluded) {
-                        continue
-                    }
-                    
-                    // Extract "content" fields
-                    val contentRegex = "\"content\":\"([^\"]+)\"".toRegex()
-                    val matches = contentRegex.findAll(trimmed)
-                    val extracted = matches.map { it.groupValues[1] }
-                        .filter { it.isNotBlank() && !isLikelyExample(it) }
-                        .toList()
-                    
-                    parts.addAll(extracted)
-                }
-                
-                if (parts.isNotEmpty()) {
-                    // Remove duplicates and join
-                    parts.distinct().joinToString("; ")
-                } else {
-                    // Fallback: try to extract any plain text definitions
-                    val plainTextRegex = "\"text\":\"([^\"]+)\"".toRegex()
-                    val plainMatches = plainTextRegex.findAll(gloss)
-                        .map { it.groupValues[1] }
-                        .filter { !isLikelyExample(it) }
-                        .toList()
-                    
-                    if (plainMatches.isNotEmpty()) {
-                        plainMatches.distinct().joinToString("; ")
-                    } else {
-                        gloss // Fallback to original
-                    }
-                }
-            } else {
-                // Plain text gloss - filter if it looks like an example
-                if (isLikelyExample(gloss)) {
-                    "" // Return empty for examples
-                } else {
-                    gloss
                 }
             }
+            
+            if (glossaryItems.isNotEmpty()) {
+                return glossaryItems.distinct().joinToString("; ")
+            }
+            
+            // Fallback: extract all "content" fields that look like definitions
+            val fallbackPattern = """"content":"([^"]{3,80})"""".toRegex()
+            val fallbackMatches = fallbackPattern.findAll(gloss)
+                .map { it.groupValues[1] }
+                .filter { 
+                    it.isNotBlank() && 
+                    !isLikelyExample(it) && 
+                    !it.matches(Regex("[a-z]{1,3}")) && // Skip short codes like "li", "ul", "tag"
+                    !it.contains("listStyleType") &&
+                    !it.contains("fontSize") &&
+                    !it.startsWith("see:") &&
+                    !it.contains("href")
+                }
+                .distinct()
+                .toList()
+            
+            if (fallbackMatches.isNotEmpty()) {
+                fallbackMatches.take(5).joinToString("; ")
+            } else {
+                gloss // Return original as last resort
+            }
         } catch (e: Exception) {
+            Log.e(TAG, "Error parsing Yomichan gloss", e)
             gloss // Fallback to original on error
         }
     }

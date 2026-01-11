@@ -181,24 +181,24 @@ fun OnboardingScreen(
         }
 
         // Bottom Bar
-        if (!allCompleted) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter),
-                color = MaterialTheme.colorScheme.tertiary,
-                shadowElevation = 8.dp
-            ) {
-                Text(
-                    text = "Easy setup in 30 seconds",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onTertiary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
-            }
-        }
+        // if (!allCompleted) {
+        //     Surface(
+        //         modifier = Modifier
+        //             .fillMaxWidth()
+        //             .align(Alignment.BottomCenter),
+        //         color = MaterialTheme.colorScheme.tertiary,
+        //         shadowElevation = 8.dp
+        //     ) {
+        //         Text(
+        //             text = "Easy setup in 30 seconds",
+        //             style = MaterialTheme.typography.titleMedium,
+        //             fontWeight = FontWeight.SemiBold,
+        //             color = MaterialTheme.colorScheme.onTertiary,
+        //             textAlign = TextAlign.Center,
+        //             modifier = Modifier.padding(vertical = 16.dp)
+        //         )
+        //     }
+        // }
     }
 }
 

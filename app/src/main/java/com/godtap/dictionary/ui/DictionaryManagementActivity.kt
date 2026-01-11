@@ -1,5 +1,6 @@
 package com.godtap.dictionary.ui
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,8 +14,12 @@ import com.godtap.dictionary.ui.theme.GodTapDictionaryTheme
 class DictionaryManagementActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        val sharedPrefs = getSharedPreferences("dictionary_prefs", Context.MODE_PRIVATE)
+        val isDarkTheme = sharedPrefs.getBoolean("dark_theme", false)
+        
         setContent {
-            GodTapDictionaryTheme {
+            GodTapDictionaryTheme(darkTheme = isDarkTheme) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     DictionaryManagementScreenNew(
                         onNavigateBack = { finish() }

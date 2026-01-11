@@ -5,6 +5,9 @@ import android.util.Log
 import android.util.LruCache
 import com.godtap.dictionary.database.AppDatabase
 import com.godtap.dictionary.database.DictionaryEntry
+import com.godtap.dictionary.database.Sense
+import com.godtap.dictionary.database.ReadingElement
+import com.godtap.dictionary.database.KanjiElement
 import com.godtap.dictionary.manager.DictionaryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -147,5 +150,51 @@ class DictionaryRepository(private val database: AppDatabase) {
      */
     suspend fun getTotalLookupCount(): Int = withContext(Dispatchers.IO) {
         database.dictionaryDao().getTotalLookupCount() ?: 0
+    }
+    
+    /**
+     * Save API translation as a dictionary entry for future use
+     * Creates a simple entry with the query as expression and translation as gloss
+     */
+    suspend fun saveApiTranslation(
+        query: String,
+        translation: String,
+        sourceLanguage: String,
+        targetLanguage: String
+    ) = withContext(Dispatchers.IO) {
+        try {
+            // Create a simple entry
+            val entry = DictionaryEntry(
+                entryId = System.currentTimeMillis(), // Use timestamp as unique ID
+                dictionaryId = "api_fallback",
+                primaryExpression = query,
+                primaryReading = query,
+                frequency = 0,
+                senses = listOf(
+                    Sense(
+                        glosses = listOf(translation),
+                        partsOfSpeech = listOf("API Translation")
+                    )
+                ),
+                kanjiElements = emptyList(),
+                readingElements = listOf(
+                    ReadingElement(
+                        reading = query
+                    )
+                ),
+                lookupCount = 0
+            )
+            
+            // Insert into database
+            database.dictionaryDao().insert(entry)
+            
+            // Invalidate cache
+            cache.remove(query)
+            
+            Log.d("DictionaryRepo", "✓ Saved API translation: '$query' → '$translation'")
+        } catch (e: Exception) {
+            Log.e("DictionaryRepo", "Failed to save API translation", e)
+            // Don't throw - this is a best-effort save
+        }
     }
 }

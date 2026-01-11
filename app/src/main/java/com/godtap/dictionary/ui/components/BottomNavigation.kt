@@ -19,7 +19,7 @@ data class BottomNavItem(
 val bottomNavItems = listOf(
     BottomNavItem("home", Icons.Default.Home, "Home"),
     BottomNavItem("history", Icons.Default.List, "History"),
-    BottomNavItem("features", Icons.Default.Star, "Features"),
+    BottomNavItem("dictionaries", Icons.Default.Add, "Dictionaries"),
     BottomNavItem("settings", Icons.Default.Settings, "Settings")
 )
 

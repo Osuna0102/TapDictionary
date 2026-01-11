@@ -31,9 +31,11 @@ fun SettingsScreen(
     val context = LocalContext.current
     val sharedPrefs = context.getSharedPreferences("dictionary_prefs", Context.MODE_PRIVATE)
     
+    val reminderManager = remember { com.godtap.dictionary.util.DailyReminderManager(context) }
+    
     var autoPlayAudio by remember { mutableStateOf(sharedPrefs.getBoolean("auto_play_audio", true)) }
     var popupAnimation by remember { mutableStateOf(sharedPrefs.getBoolean("popup_animation", true)) }
-    var dailyReminders by remember { mutableStateOf(sharedPrefs.getBoolean("daily_reminders", false)) }
+    var dailyReminders by remember { mutableStateOf(reminderManager.areRemindersEnabled()) }
     var underlineWords by remember { mutableStateOf(sharedPrefs.getBoolean("underline_enabled", false)) }
     var isDarkTheme by remember { mutableStateOf(sharedPrefs.getBoolean("dark_theme", false)) }
 
@@ -170,31 +172,33 @@ fun SettingsScreen(
             
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingItem(
-                        icon = Icons.Filled.Settings,
-                        title = "Theme",
-                        subtitle = if (isDarkTheme) "Dark" else "Light",
-                        onClick = {
-                            isDarkTheme = !isDarkTheme
-                            sharedPrefs.edit().putBoolean("dark_theme", isDarkTheme).apply()
-                            // Note: Full theme switching requires MainActivity restart
-                            android.widget.Toast.makeText(context, 
-                                "Theme preference saved. Restart app to apply.", 
-                                android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        iconColor = MaterialTheme.colorScheme.tertiary
-                    )
-                    SettingToggleItem(
-                        icon = Icons.Filled.Star,
-                        title = "Popup Animation",
-                        subtitle = "Enable smooth animations",
-                        checked = popupAnimation,
-                        onCheckedChange = {
-                            popupAnimation = it
-                            sharedPrefs.edit().putBoolean("popup_animation", it).apply()
-                        },
-                        iconColor = MaterialTheme.colorScheme.tertiary
-                    )
+                    // TODO: Theme toggle - requires app restart to work properly
+                    // SettingItem(
+                    //     icon = Icons.Filled.Settings,
+                    //     title = "Theme",
+                    //     subtitle = if (isDarkTheme) "Dark" else "Light",
+                    //     onClick = {
+                    //         isDarkTheme = !isDarkTheme
+                    //         sharedPrefs.edit().putBoolean("dark_theme", isDarkTheme).apply()
+                    //         android.widget.Toast.makeText(context, 
+                    //             "Theme preference saved. Restart app to apply.", 
+                    //             android.widget.Toast.LENGTH_SHORT).show()
+                    //     },
+                    //     iconColor = MaterialTheme.colorScheme.tertiary
+                    // )
+                    
+                    // TODO: Popup animation - not currently implemented
+                    // SettingToggleItem(
+                    //     icon = Icons.Filled.Star,
+                    //     title = "Popup Animation",
+                    //     subtitle = "Enable smooth animations",
+                    //     checked = popupAnimation,
+                    //     onCheckedChange = {
+                    //         popupAnimation = it
+                    //         sharedPrefs.edit().putBoolean("popup_animation", it).apply()
+                    //     },
+                    //     iconColor = MaterialTheme.colorScheme.tertiary
+                    // )
                     SettingToggleItem(
                         icon = Icons.Filled.Edit,
                         title = "Underline Words",
@@ -227,11 +231,23 @@ fun SettingsScreen(
                     SettingToggleItem(
                         icon = Icons.Default.Notifications,
                         title = "Daily Reminders",
-                        subtitle = "Get daily learning reminders",
+                        subtitle = "Get daily learning reminders at 9 AM",
                         checked = dailyReminders,
                         onCheckedChange = {
                             dailyReminders = it
-                            sharedPrefs.edit().putBoolean("daily_reminders", it).apply()
+                            if (it) {
+                                // Enable reminders at 9 AM
+                                reminderManager.enableReminders(hourOfDay = 9, minute = 0)
+                                android.widget.Toast.makeText(context, 
+                                    "Daily reminders enabled at 9:00 AM", 
+                                    android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                // Disable reminders
+                                reminderManager.disableReminders()
+                                android.widget.Toast.makeText(context, 
+                                    "Daily reminders disabled", 
+                                    android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         },
                         iconColor = Color(0xFF4CAF50)
                     )
